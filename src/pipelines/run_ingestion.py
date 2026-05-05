@@ -1,6 +1,16 @@
 from pathlib import Path
 import sys
 
+def find_latest_file(raw_dir: Path) -> Path:
+    txt_files = list(raw_dir.glob("*.txt"))
+
+    if not txt_files:
+        raise FileNotFoundError("No TXT files found in data/raw")
+
+    # берем самый свежий по дате изменения
+    latest_file = max(txt_files, key=lambda p: p.stat().st_mtime)
+
+    return latest_file
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
@@ -15,15 +25,12 @@ from src.quality.validations import (
     print_validation_warnings,
 )
 
-
-SOURCE_FILE = RAW_DIR / "Челяб-Ирк-Каз_20.04.2029.txt"
-
-
 def main():
-    if not SOURCE_FILE.exists():
-        raise FileNotFoundError(f"File not found: {SOURCE_FILE}")
+    source_file = find_latest_file(RAW_DIR)
 
-    df, metadata = parse_receivables_txt(SOURCE_FILE)
+    print(f"Using file: {source_file.name}")
+
+    df, metadata = parse_receivables_txt(source_file)
     
     errors, warnings = validate_receivables_snapshot(df)
     print_validation_warnings(warnings)
@@ -33,7 +40,7 @@ def main():
     print("Metadata:", metadata)
     print(df.head())
 
-    load_receivables_snapshot(df, metadata, SOURCE_FILE)
+    load_receivables_snapshot(df, metadata, source_file)
 
     print("Loaded to PostgreSQL successfully.")
 
