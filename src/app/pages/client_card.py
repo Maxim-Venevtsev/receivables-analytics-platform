@@ -96,15 +96,17 @@ def client_card_page(client_id: str):
         kpi_card("Будущий рейтинг", "—", "после накопления истории")
 
     # === Aging buckets ===
+
     aging_df = df.copy()
     aging_df["aging_bucket"] = aging_df["days_overdue_real"].apply(aging_bucket)
 
     bucket_order = ["Не просрочено", "1–7 дней", "8–30 дней", "31+ дней"]
+
     bucket_colors = {
-        "Не просрочено": "green",
-        "1–7 дней": "orange",
-        "8–30 дней": "deep-orange",
-        "31+ дней": "red",
+        "Не просрочено": "#22c55e",   # green
+        "1–7 дней": "#f59e0b",        # amber
+        "8–30 дней": "#f97316",       # orange
+        "31+ дней": "#ef4444",        # red
     }
 
     aging_summary = (
@@ -137,9 +139,15 @@ def client_card_page(client_id: str):
 
             with ui.row().classes("w-full items-center gap-4 mb-2"):
                 ui.label(bucket).classes("w-32 text-sm")
+
                 with ui.element("div").classes("flex-1 bg-gray-100 rounded-full h-5 overflow-hidden"):
-                    ui.element("div").classes(f"bg-{color}-500 h-5 rounded-full").style(f"width: {width}%")
+                    ui.element("div").classes("h-5 rounded-full").style(
+                        f"width: {width}%; background-color: {color};"
+                    )
+
                 ui.label(f"{amount_fmt} · {share_fmt}").classes("w-40 text-right text-sm text-gray-600")
+
+    # === Таблица ===
 
     filter_toggle = ui.toggle(
         options=["Все", "Только просроченные"],
