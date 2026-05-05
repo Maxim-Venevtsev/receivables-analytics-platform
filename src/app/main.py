@@ -78,13 +78,21 @@ def dashboard():
         LIMIT 100
     """)
 
-    branch_options = ["Все филиалы"] + sorted(branches["client_group"].dropna().unique().tolist())
+    branch_options = sorted(branches["client_group"].dropna().unique().tolist())
 
-    def prepare_branch_rows(selected_branch: str):
+    def normalize_selected_branches(value):
+        if not value:
+            return []
+        if isinstance(value, str):
+            return [value]
+        return value
+
+    def prepare_branch_rows(selected_branches):
         df = branches.copy()
+        selected_branches = normalize_selected_branches(selected_branches)
 
-        if selected_branch != "Все филиалы":
-            df = df[df["client_group"] == selected_branch]
+        if selected_branches:
+            df = df[df["client_group"].isin(selected_branches)]
 
         df["total_debt_fmt"] = df["total_debt"].apply(money)
         df["overdue_debt_fmt"] = df["overdue_debt"].apply(money)
@@ -92,11 +100,12 @@ def dashboard():
 
         return df.to_dict("records")
 
-    def prepare_priority_rows(selected_branch: str):
+    def prepare_priority_rows(selected_branches):
         df = priority.copy()
+        selected_branches = normalize_selected_branches(selected_branches)
 
-        if selected_branch != "Все филиалы":
-            df = df[df["client_group"] == selected_branch]
+        if selected_branches:
+            df = df[df["client_group"].isin(selected_branches)]
 
         df["total_debt_fmt"] = df["total_debt"].apply(money)
         df["overdue_debt_fmt"] = df["overdue_debt"].apply(money)
@@ -128,10 +137,18 @@ def dashboard():
 
     with ui.row().classes("items-center gap-4"):
         ui.label("Фильтр по филиалу").classes("text-sm text-gray-500")
+
         branch_select = ui.select(
             options=branch_options,
-            value="Все филиалы",
-        ).classes("w-64")
+            value=[],
+            multiple=True,
+            label="Ничего не выбрано = все филиалы",
+        ).props("use-chips clearable").classes("w-96")
+
+        ui.button(
+            "Все филиалы",
+            on_click=lambda: reset_branch_filter(),
+        ).props("flat color=primary")
 
     ui.label("Филиалы").classes("text-xl mt-6")
 
@@ -142,8 +159,23 @@ def dashboard():
             {"name": "overdue_debt_fmt", "label": "Просрочка", "field": "overdue_debt_fmt", "align": "right"},
             {"name": "overdue_share_fmt", "label": "% просрочки", "field": "overdue_share_fmt", "align": "right"},
         ],
-        rows=prepare_branch_rows("Все филиалы"),
+        rows=prepare_branch_rows([]),
     ).classes("w-full")
+
+    branch_table.add_slot(
+        "body-cell-client_group",
+        """
+        <q-td :props="props">
+            <q-btn
+                flat
+                dense
+                color="primary"
+                :label="props.row.client_group"
+                @click="$parent.$emit('branch_click', props.row.client_group)"
+            />
+        </q-td>
+        """,
+    )
 
     branch_table.add_slot(
         "body-cell-overdue_share_fmt",
@@ -168,7 +200,7 @@ def dashboard():
             {"name": "risk_fmt", "label": "Риск", "field": "risk_fmt", "align": "center"},
             {"name": "recommended_action", "label": "Действие", "field": "recommended_action", "align": "center"},
         ],
-        rows=prepare_priority_rows("Все филиалы"),
+        rows=prepare_priority_rows([]),
     ).classes("w-full")
 
     priority_table.add_slot(
@@ -196,15 +228,24 @@ def dashboard():
     )
 
     def apply_branch_filter():
-        selected_branch = branch_select.value
+        selected_branches = branch_select.value or []
 
-        branch_table.rows = prepare_branch_rows(selected_branch)
+        branch_table.rows = prepare_branch_rows(selected_branches)
         branch_table.update()
 
-        priority_table.rows = prepare_priority_rows(selected_branch)
+        priority_table.rows = prepare_priority_rows(selected_branches)
         priority_table.update()
 
+    def select_branch_from_table(event):
+        branch_select.value = [event.args]
+        apply_branch_filter()
+
+    def reset_branch_filter():
+        branch_select.value = []
+        apply_branch_filter()
+
     branch_select.on_value_change(lambda _: apply_branch_filter())
+    branch_table.on("branch_click", select_branch_from_table)
 
 
 ui.run()
