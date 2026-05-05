@@ -1,3 +1,5 @@
+DROP VIEW IF EXISTS core.v_client_priority;
+
 CREATE OR REPLACE VIEW core.v_client_priority AS
 SELECT
     client_id,
@@ -59,6 +61,8 @@ GROUP BY client_id, client_name, client_group;
 
 
 
+DROP VIEW IF EXISTS core.v_invoice_detail;
+
 CREATE OR REPLACE VIEW core.v_invoice_detail AS
 SELECT
     id,
@@ -109,6 +113,8 @@ FROM core.receivables_snapshot_fact;
 
 
 
+DROP VIEW IF EXISTS core.v_branch_summary;
+
 CREATE OR REPLACE VIEW core.v_branch_summary AS
 SELECT
     client_group,
@@ -141,6 +147,8 @@ GROUP BY client_group;
 
 
 
+DROP VIEW IF EXISTS core.v_dashboard_kpi;
+
 CREATE OR REPLACE VIEW core.v_dashboard_kpi AS
 SELECT
     COUNT(*) AS invoice_count,
@@ -170,3 +178,84 @@ SELECT
     MAX(report_generated_date) AS latest_snapshot_date
 
 FROM core.receivables_snapshot_fact;
+
+
+
+DROP VIEW IF EXISTS core.v_client_deltas;
+
+CREATE VIEW core.v_client_deltas AS
+WITH client_daily AS (
+    SELECT
+        report_generated_date,
+        client_id,
+        client_name,
+        client_group,
+
+        COUNT(*) AS invoice_count,
+        SUM(invoice_amount) AS total_debt,
+        SUM(CASE WHEN is_overdue_real THEN invoice_amount ELSE 0 END) AS overdue_debt,
+        SUM(CASE WHEN is_due_in_7_days THEN invoice_amount ELSE 0 END) AS due_in_7_days,
+        MAX(days_overdue_real) AS max_days_overdue
+    FROM core.receivables_snapshot_fact
+    GROUP BY
+        report_generated_date,
+        client_id,
+        client_name,
+        client_group
+),
+
+with_lags AS (
+    SELECT
+        *,
+        LAG(report_generated_date) OVER (
+            PARTITION BY client_id
+            ORDER BY report_generated_date
+        ) AS previous_snapshot_date,
+
+        LAG(total_debt) OVER (
+            PARTITION BY client_id
+            ORDER BY report_generated_date
+        ) AS previous_total_debt,
+
+        LAG(overdue_debt) OVER (
+            PARTITION BY client_id
+            ORDER BY report_generated_date
+        ) AS previous_overdue_debt
+    FROM client_daily
+)
+
+SELECT
+    report_generated_date,
+    previous_snapshot_date,
+
+    client_id,
+    client_name,
+    client_group,
+
+    invoice_count,
+    total_debt,
+    overdue_debt,
+    due_in_7_days,
+    max_days_overdue,
+
+    previous_total_debt,
+    previous_overdue_debt,
+
+    total_debt - COALESCE(previous_total_debt, 0) AS total_debt_delta,
+    overdue_debt - COALESCE(previous_overdue_debt, 0) AS overdue_debt_delta,
+
+    CASE
+        WHEN previous_total_debt IS NULL THEN 'NEW IN SNAPSHOT'
+        WHEN total_debt < previous_total_debt THEN 'DEBT DECREASED'
+        WHEN total_debt > previous_total_debt THEN 'DEBT INCREASED'
+        ELSE 'NO CHANGE'
+    END AS debt_change_status,
+
+    CASE
+        WHEN previous_overdue_debt IS NULL THEN 'NEW IN SNAPSHOT'
+        WHEN overdue_debt < previous_overdue_debt THEN 'OVERDUE DECREASED'
+        WHEN overdue_debt > previous_overdue_debt THEN 'OVERDUE INCREASED'
+        ELSE 'NO CHANGE'
+    END AS overdue_change_status
+
+FROM with_lags;
