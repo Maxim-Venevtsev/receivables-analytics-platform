@@ -37,6 +37,16 @@ def kpi_card(title: str, value: str, subtitle: str | None = None):
             ui.label(subtitle or "").classes("text-sm text-gray-500")
 
 
+def aging_bucket(days: int) -> str:
+    if days <= 0:
+        return "Не просрочено"
+    if days <= 7:
+        return "1–7 дней"
+    if days <= 30:
+        return "8–30 дней"
+    return "31+ дней"
+
+
 @ui.page("/client/{client_id}")
 def client_card_page(client_id: str):
 
@@ -85,6 +95,52 @@ def client_card_page(client_id: str):
         kpi_card("Макс. дней", str(max_days))
         kpi_card("Будущий рейтинг", "—", "после накопления истории")
 
+    # === Aging buckets ===
+    aging_df = df.copy()
+    aging_df["aging_bucket"] = aging_df["days_overdue_real"].apply(aging_bucket)
+
+    bucket_order = ["Не просрочено", "1–7 дней", "8–30 дней", "31+ дней"]
+    bucket_colors = {
+        "Не просрочено": "green",
+        "1–7 дней": "orange",
+        "8–30 дней": "deep-orange",
+        "31+ дней": "red",
+    }
+
+    aging_summary = (
+        aging_df.groupby("aging_bucket", as_index=False)["invoice_amount"]
+        .sum()
+        .rename(columns={"invoice_amount": "amount"})
+    )
+
+    aging_summary = (
+        pd.DataFrame({"aging_bucket": bucket_order})
+        .merge(aging_summary, on="aging_bucket", how="left")
+        .fillna({"amount": 0})
+    )
+
+    aging_summary["share"] = aging_summary["amount"] / total_debt * 100 if total_debt else 0
+    aging_summary["amount_fmt"] = aging_summary["amount"].apply(money)
+    aging_summary["share_fmt"] = aging_summary["share"].apply(percent)
+
+    ui.label("Aging structure").classes("text-xl mt-2 mb-2")
+
+    with ui.card().classes("w-full p-4 mb-6"):
+        ui.label("Распределение задолженности по срокам").classes("text-sm text-gray-500 mb-3")
+
+        for _, row in aging_summary.iterrows():
+            bucket = row["aging_bucket"]
+            amount_fmt = row["amount_fmt"]
+            share_fmt = row["share_fmt"]
+            width = max(float(row["share"]), 1) if float(row["amount"]) > 0 else 0
+            color = bucket_colors[bucket]
+
+            with ui.row().classes("w-full items-center gap-4 mb-2"):
+                ui.label(bucket).classes("w-32 text-sm")
+                with ui.element("div").classes("flex-1 bg-gray-100 rounded-full h-5 overflow-hidden"):
+                    ui.element("div").classes(f"bg-{color}-500 h-5 rounded-full").style(f"width: {width}%")
+                ui.label(f"{amount_fmt} · {share_fmt}").classes("w-40 text-right text-sm text-gray-600")
+
     filter_toggle = ui.toggle(
         options=["Все", "Только просроченные"],
         value="Все"
@@ -98,6 +154,7 @@ def client_card_page(client_id: str):
 
         dff["invoice_amount_fmt"] = dff["invoice_amount"].apply(money)
         dff["is_overdue_fmt"] = dff["is_overdue_real"].map({True: "Да", False: "Нет"})
+        dff["aging_bucket"] = dff["days_overdue_real"].apply(aging_bucket)
 
         return dff.to_dict("records")
 
@@ -107,6 +164,7 @@ def client_card_page(client_id: str):
             {"name": "due_date", "label": "Оплатить до", "field": "due_date"},
             {"name": "invoice_amount_fmt", "label": "Сумма", "field": "invoice_amount_fmt", "align": "right"},
             {"name": "days_overdue_real", "label": "Просрочка (дни)", "field": "days_overdue_real", "align": "right"},
+            {"name": "aging_bucket", "label": "Aging bucket", "field": "aging_bucket", "align": "center"},
             {"name": "is_overdue_fmt", "label": "Просрочено", "field": "is_overdue_fmt", "align": "center"},
         ],
         rows=prepare_rows(),
