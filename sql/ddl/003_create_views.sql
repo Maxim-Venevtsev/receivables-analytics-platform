@@ -259,3 +259,53 @@ SELECT
     END AS overdue_change_status
 
 FROM with_lags;
+
+
+
+DROP VIEW IF EXISTS core.v_dashboard_overview;
+
+CREATE VIEW core.v_dashboard_overview AS
+SELECT
+    k.latest_snapshot_date,
+
+    k.invoice_count,
+    k.client_count,
+    k.branch_count,
+
+    k.total_debt,
+    k.overdue_debt,
+    k.due_today,
+    k.due_in_3_days,
+    k.due_in_7_days,
+    k.overdue_share_pct,
+
+    k.overdue_client_count,
+    k.due_soon_client_count,
+
+    (
+        SELECT COUNT(*)
+        FROM core.v_client_priority
+        WHERE risk_category = 'HIGH'
+    ) AS high_risk_client_count,
+
+    (
+        SELECT COUNT(*)
+        FROM core.v_client_priority
+        WHERE recommended_action IN ('CALL NOW', 'CONTROL TODAY')
+    ) AS urgent_action_count,
+
+    (
+        SELECT COUNT(*)
+        FROM core.v_client_deltas
+        WHERE report_generated_date = k.latest_snapshot_date
+          AND total_debt_delta < 0
+    ) AS clients_with_debt_decrease,
+
+    (
+        SELECT COUNT(*)
+        FROM core.v_client_deltas
+        WHERE report_generated_date = k.latest_snapshot_date
+          AND total_debt_delta > 0
+    ) AS clients_with_debt_increase
+
+FROM core.v_dashboard_kpi k;
