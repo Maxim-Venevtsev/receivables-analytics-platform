@@ -7,6 +7,7 @@ from nicegui import ui
 from sqlalchemy import create_engine, text
 
 from src.app.pages.deltas import deltas_page
+from src.app.pages.overdue import overdue_page
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -121,10 +122,15 @@ def dashboard():
 
     with ui.row().classes("gap-4"):
         kpi_card("Общая задолженность", money(kpi.total_debt))
-        kpi_card(
-            "Просрочено",
-            money(kpi.overdue_debt),
-            f"{percent(kpi.overdue_share_pct)} от общей задолженности",
+        with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
+            "click", lambda: ui.navigate.to("/overdue")
+        ):
+            
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Просрочено").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                ui.label(money(kpi.overdue_debt)).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label(f"{percent(kpi.overdue_share_pct)} от общей задолженности").classes(
+            "text-sm text-gray-500 h-8 flex items-center justify-center"
         )
         kpi_card(
             "К оплате сегодня",
