@@ -36,11 +36,11 @@ def percent(value) -> str:
 
 
 def kpi_card(title: str, value: str, subtitle: str | None = None):
-    with ui.card().classes("w-64 p-4"):
-        ui.label(title).classes("text-sm text-gray-500")
-        ui.label(value).classes("text-2xl font-bold")
-        if subtitle:
-            ui.label(subtitle).classes("text-sm text-gray-500")
+    with ui.card().classes("w-64 h-36 p-4"):
+        with ui.column().classes("w-full h-full items-center justify-between text-center"):
+            ui.label(title).classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+            ui.label(value).classes("text-2xl font-bold h-10 flex items-center justify-center")
+            ui.label(subtitle or "").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
 
 def risk_badge(category: str) -> str:
@@ -97,9 +97,9 @@ def dashboard():
         kpi_card(
             "Просрочено",
             money(kpi.overdue_debt),
-            f"{percent(kpi.overdue_share_pct)} от общей дебиторки",
+            f"{percent(kpi.overdue_share_pct)} от общей задолженности",
         )
-        kpi_card("Оплата сегодня", money(kpi.due_today))
+        kpi_card("К оплате сегодня", money(kpi.due_today))
         kpi_card("HIGH RISK", str(kpi.high_risk_client_count), "клиентов в красной зоне")
 
     ui.label("Филиалы").classes("text-xl mt-6")
