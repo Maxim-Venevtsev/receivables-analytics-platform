@@ -1,16 +1,6 @@
 from pathlib import Path
 import sys
 
-def find_latest_file(raw_dir: Path) -> Path:
-    txt_files = list(raw_dir.glob("*.txt"))
-
-    if not txt_files:
-        raise FileNotFoundError("No TXT files found in data/raw")
-
-    # берем самый свежий по дате изменения
-    latest_file = max(txt_files, key=lambda p: p.stat().st_mtime)
-
-    return latest_file
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DIR = PROJECT_ROOT / "data" / "raw"
@@ -25,24 +15,44 @@ from src.quality.validations import (
     print_validation_warnings,
 )
 
-def main():
-    source_file = find_latest_file(RAW_DIR)
 
+def find_txt_files(raw_dir: Path) -> list[Path]:
+    txt_files = sorted(raw_dir.glob("*.txt"))
+
+    if not txt_files:
+        raise FileNotFoundError("No TXT files found in data/raw")
+
+    return txt_files
+
+
+def ingest_one_file(source_file: Path) -> None:
+    print("=" * 80)
     print(f"Using file: {source_file.name}")
 
     df, metadata = parse_receivables_txt(source_file)
-    
+
     errors, warnings = validate_receivables_snapshot(df)
     print_validation_warnings(warnings)
     raise_if_validation_errors(errors)
 
     print("Parsed rows:", len(df))
     print("Metadata:", metadata)
-    print(df.head())
 
     load_receivables_snapshot(df, metadata, source_file)
 
     print("Loaded to PostgreSQL successfully.")
+
+
+def main():
+    txt_files = find_txt_files(RAW_DIR)
+
+    print(f"Found TXT files: {len(txt_files)}")
+
+    for source_file in txt_files:
+        ingest_one_file(source_file)
+
+    print("=" * 80)
+    print("Batch ingestion completed successfully.")
 
 
 if __name__ == "__main__":
