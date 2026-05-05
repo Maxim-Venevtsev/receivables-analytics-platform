@@ -163,6 +163,6 @@ def overdue_page():
     )
 
     def on_client_click(event):
-        ui.notify(f"Drill-down по клиенту {event.args} добавим следующим шагом")
+        ui.navigate.to(f"/client/{event.args}")
 
     table.on("client_click", on_client_click)

@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, text
 
 from src.app.pages.deltas import deltas_page
 from src.app.pages.overdue import overdue_page
+from src.app.pages.client_card import client_detail_page
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
