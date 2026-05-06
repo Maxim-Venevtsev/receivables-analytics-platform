@@ -47,10 +47,10 @@ def kpi_card(title: str, value: str, subtitle: str | None = None):
 
 def risk_badge(category: str) -> str:
     if category == "HIGH":
-        return "🔴 HIGH"
+        return "🔴 Высокий"
     if category == "MEDIUM":
-        return "🟡 MEDIUM"
-    return "🟢 LOW"
+        return "🟡 Средний"
+    return "🟢 Низкий"
 
 
 @ui.page("/")
@@ -69,6 +69,7 @@ def dashboard():
 
     priority = query_df("""
         SELECT
+            client_id,
             client_name,
             client_group,
             total_debt,
@@ -80,18 +81,17 @@ def dashboard():
         LIMIT 100
     """)
 
-    branch_options = sorted(branches["client_group"].dropna().unique().tolist())
+    selected_branches: list[str] = []
 
-    def normalize_selected_branches(value):
-        if not value:
-            return []
-        if isinstance(value, str):
-            return [value]
-        return value
+    def normalize_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        for col in ["total_debt", "overdue_debt", "overdue_share_pct"]:
+            if col in df.columns:
+                df[col] = df[col].astype(float)
+        return df
 
-    def prepare_branch_rows(selected_branches):
-        df = branches.copy()
-        selected_branches = normalize_selected_branches(selected_branches)
+    def prepare_branch_rows():
+        df = normalize_numeric_columns(branches)
 
         if selected_branches:
             df = df[df["client_group"].isin(selected_branches)]
@@ -102,12 +102,18 @@ def dashboard():
 
         return df.to_dict("records")
 
-    def prepare_priority_rows(selected_branches):
-        df = priority.copy()
-        selected_branches = normalize_selected_branches(selected_branches)
+    def prepare_priority_rows(search_text: str = ""):
+        df = normalize_numeric_columns(priority)
 
         if selected_branches:
             df = df[df["client_group"].isin(selected_branches)]
+
+        search_text = (search_text or "").strip().lower()
+        if search_text:
+            df = df[
+                df["client_id"].astype(str).str.lower().str.contains(search_text, na=False)
+                | df["client_name"].astype(str).str.lower().str.contains(search_text, na=False)
+            ]
 
         df["total_debt_fmt"] = df["total_debt"].apply(money)
         df["overdue_debt_fmt"] = df["overdue_debt"].apply(money)
@@ -123,37 +129,31 @@ def dashboard():
 
     with ui.row().classes("gap-4"):
         kpi_card("Общая задолженность", money(kpi.total_debt))
+
         with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
             "click", lambda: ui.navigate.to("/overdue")
         ):
-            
             with ui.column().classes("w-full h-full items-center justify-between text-center"):
                 ui.label("Просрочено").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
                 ui.label(money(kpi.overdue_debt)).classes("text-2xl font-bold h-10 flex items-center justify-center")
                 ui.label(f"{percent(kpi.overdue_share_pct)} от общей задолженности").classes(
-            "text-sm text-gray-500 h-8 flex items-center justify-center"
-        )
+                    "text-sm text-gray-500 h-8 flex items-center justify-center"
+                )
+
         kpi_card(
             "К оплате сегодня",
             money(kpi.due_today),
             "согласно срокам оплаты",
         )
-        kpi_card("HIGH RISK", str(kpi.high_risk_client_count), "клиентов в красной зоне")
+
+        kpi_card("Высокий риск", str(kpi.high_risk_client_count), "клиентов в красной зоне")
 
     ui.separator().classes("my-4")
 
     with ui.row().classes("items-center gap-4"):
-        ui.label("Фильтр по филиалу").classes("text-sm text-gray-500")
-
-        branch_select = ui.select(
-            options=branch_options,
-            value=[],
-            multiple=True,
-            label="Ничего не выбрано = все филиалы",
-        ).props("use-chips clearable").classes("w-96")
-
+        selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
         ui.button(
-            "Все филиалы",
+            "ВСЕ ФИЛИАЛЫ",
             on_click=lambda: reset_branch_filter(),
         ).props("flat color=primary")
 
@@ -161,12 +161,12 @@ def dashboard():
 
     branch_table = ui.table(
         columns=[
-            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left"},
-            {"name": "total_debt_fmt", "label": "Долг", "field": "total_debt_fmt", "align": "right"},
-            {"name": "overdue_debt_fmt", "label": "Просрочка", "field": "overdue_debt_fmt", "align": "right"},
-            {"name": "overdue_share_fmt", "label": "% просрочки", "field": "overdue_share_fmt", "align": "right"},
+            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
+            {"name": "total_debt", "label": "Долг", "field": "total_debt", "align": "right", "sortable": True},
+            {"name": "overdue_debt", "label": "Просрочка", "field": "overdue_debt", "align": "right", "sortable": True},
+            {"name": "overdue_share_pct", "label": "% просрочки", "field": "overdue_share_pct", "align": "right", "sortable": True},
         ],
-        rows=prepare_branch_rows([]),
+        rows=prepare_branch_rows(),
     ).classes("w-full")
 
     branch_table.add_slot(
@@ -185,7 +185,25 @@ def dashboard():
     )
 
     branch_table.add_slot(
-        "body-cell-overdue_share_fmt",
+        "body-cell-total_debt",
+        """
+        <q-td :props="props" class="text-right">
+            {{ props.row.total_debt_fmt }}
+        </q-td>
+        """,
+    )
+
+    branch_table.add_slot(
+        "body-cell-overdue_debt",
+        """
+        <q-td :props="props" class="text-right">
+            {{ props.row.overdue_debt_fmt }}
+        </q-td>
+        """,
+    )
+
+    branch_table.add_slot(
+        "body-cell-overdue_share_pct",
         """
         <q-td :props="props">
             <q-badge
@@ -198,17 +216,57 @@ def dashboard():
 
     ui.label("Клиенты в работе").classes("text-xl mt-6")
 
+    with ui.row().classes("items-center gap-4 mb-2"):
+        search_input = ui.input(
+            label="Поиск клиента по ID или названию",
+            placeholder="Например: Регинас или 2755",
+        ).props("clearable").classes("w-96")
+
     priority_table = ui.table(
         columns=[
-            {"name": "client_name", "label": "Клиент", "field": "client_name", "align": "left"},
-            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left"},
-            {"name": "total_debt_fmt", "label": "Долг", "field": "total_debt_fmt", "align": "right"},
-            {"name": "overdue_debt_fmt", "label": "Просрочка", "field": "overdue_debt_fmt", "align": "right"},
-            {"name": "risk_fmt", "label": "Риск", "field": "risk_fmt", "align": "center"},
-            {"name": "recommended_action", "label": "Действие", "field": "recommended_action", "align": "center"},
+            {"name": "client_name", "label": "Клиент", "field": "client_name", "align": "left", "sortable": True},
+            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
+            {"name": "total_debt", "label": "Долг", "field": "total_debt", "align": "right", "sortable": True},
+            {"name": "overdue_debt", "label": "Просрочка", "field": "overdue_debt", "align": "right", "sortable": True},
+            {"name": "risk_fmt", "label": "Риск", "field": "risk_fmt", "align": "center", "sortable": True},
+            {"name": "recommended_action", "label": "Действие", "field": "recommended_action", "align": "center", "sortable": True},
         ],
-        rows=prepare_priority_rows([]),
+        rows=prepare_priority_rows(),
+        row_key="client_id",
     ).classes("w-full")
+
+    priority_table.add_slot(
+        "body-cell-client_name",
+        """
+        <q-td :props="props">
+            <q-btn
+                flat
+                dense
+                color="primary"
+                :label="props.row.client_name"
+                @click="$parent.$emit('client_click', props.row.client_id)"
+            />
+        </q-td>
+        """,
+    )
+
+    priority_table.add_slot(
+        "body-cell-total_debt",
+        """
+        <q-td :props="props" class="text-right">
+            {{ props.row.total_debt_fmt }}
+        </q-td>
+        """,
+    )
+
+    priority_table.add_slot(
+        "body-cell-overdue_debt",
+        """
+        <q-td :props="props" class="text-right">
+            {{ props.row.overdue_debt_fmt }}
+        </q-td>
+        """,
+    )
 
     priority_table.add_slot(
         "body-cell-risk_fmt",
@@ -234,25 +292,34 @@ def dashboard():
         """,
     )
 
-    def apply_branch_filter():
-        selected_branches = branch_select.value or []
+    def apply_filters():
+        if selected_branches:
+            selected_branch_label.text = f"Фильтр: {', '.join(selected_branches)}"
+        else:
+            selected_branch_label.text = "Показаны все филиалы"
+        selected_branch_label.update()
 
-        branch_table.rows = prepare_branch_rows(selected_branches)
+        branch_table.rows = prepare_branch_rows()
         branch_table.update()
 
-        priority_table.rows = prepare_priority_rows(selected_branches)
+        priority_table.rows = prepare_priority_rows(search_input.value)
         priority_table.update()
 
     def select_branch_from_table(event):
-        branch_select.value = [event.args]
-        apply_branch_filter()
+        selected_branches.clear()
+        selected_branches.append(event.args)
+        apply_filters()
 
     def reset_branch_filter():
-        branch_select.value = []
-        apply_branch_filter()
+        selected_branches.clear()
+        apply_filters()
 
-    branch_select.on_value_change(lambda _: apply_branch_filter())
+    def open_client_card(event):
+        ui.navigate.to(f"/client/{event.args}")
+
     branch_table.on("branch_click", select_branch_from_table)
+    priority_table.on("client_click", open_client_card)
+    search_input.on_value_change(lambda _: apply_filters())
 
 
 ui.run()
