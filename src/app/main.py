@@ -341,9 +341,14 @@ def dashboard():
     def open_client_card_from_grid(event):
         args = event.args or {}
         data = args.get("data") or {}
-        col_def = args.get("colDef") or {}
 
-        if col_def.get("field") == "client_name" and data.get("client_id"):
+        col_id = (
+            args.get("colId")
+            or (args.get("column") or {}).get("colId")
+            or (args.get("colDef") or {}).get("field")
+        )
+
+        if col_id == "client_name" and data.get("client_id"):
             ui.navigate.to(f"/client/{data['client_id']}")
 
     branch_table.on("branch_click", select_branch_from_table)
