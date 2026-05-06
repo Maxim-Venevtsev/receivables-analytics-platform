@@ -53,6 +53,14 @@ def risk_badge(category: str) -> str:
     return "🟢 Низкий"
 
 
+def risk_order(category: str) -> int:
+    if category == "HIGH":
+        return 3
+    if category == "MEDIUM":
+        return 2
+    return 1
+
+
 @ui.page("/")
 def dashboard():
     kpi = query_df("SELECT * FROM core.v_dashboard_overview").iloc[0]
@@ -103,7 +111,10 @@ def dashboard():
         return df.to_dict("records")
 
     def prepare_priority_rows(search_text: str = ""):
-        df = normalize_numeric_columns(priority)
+        df = priority.copy()
+
+        for col in ["total_debt", "overdue_debt"]:
+            df[col] = df[col].astype(float)
 
         if selected_branches:
             df = df[df["client_group"].isin(selected_branches)]
@@ -115,9 +126,8 @@ def dashboard():
                 | df["client_name"].astype(str).str.lower().str.contains(search_text, na=False)
             ]
 
-        df["total_debt_fmt"] = df["total_debt"].apply(money)
-        df["overdue_debt_fmt"] = df["overdue_debt"].apply(money)
         df["risk_fmt"] = df["risk_category"].apply(risk_badge)
+        df["risk_order"] = df["risk_category"].apply(risk_order)
 
         return df.to_dict("records")
 
@@ -222,75 +232,89 @@ def dashboard():
             placeholder="Например: Регинас или 2755",
         ).props("clearable").classes("w-96")
 
-    priority_table = ui.table(
-        columns=[
-            {"name": "client_name", "label": "Клиент", "field": "client_name", "align": "left", "sortable": True},
-            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
-            {"name": "total_debt", "label": "Долг", "field": "total_debt", "align": "right", "sortable": True},
-            {"name": "overdue_debt", "label": "Просрочка", "field": "overdue_debt", "align": "right", "sortable": True},
-            {"name": "risk_fmt", "label": "Риск", "field": "risk_fmt", "align": "center", "sortable": True},
-            {"name": "recommended_action", "label": "Действие", "field": "recommended_action", "align": "center", "sortable": True},
+    priority_grid = ui.aggrid({
+        "columnDefs": [
+            {
+                "headerName": "Клиент",
+                "field": "client_name",
+                "sortable": True,
+                "filter": True,
+                "minWidth": 260,
+                ":cellRenderer": """
+                    params => `<span style="color:#1976d2; cursor:pointer; font-weight:500;">${params.value}</span>`
+                """,
+            },
+            {
+                "headerName": "Филиал",
+                "field": "client_group",
+                "sortable": True,
+                "filter": True,
+                "minWidth": 130,
+            },
+            {
+                "headerName": "Долг",
+                "field": "total_debt",
+                "sortable": True,
+                "filter": "agNumberColumnFilter",
+                "type": "rightAligned",
+                "minWidth": 140,
+                ":valueFormatter": """
+                    params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')
+                """,
+            },
+            {
+                "headerName": "Просрочка",
+                "field": "overdue_debt",
+                "sortable": True,
+                "filter": "agNumberColumnFilter",
+                "type": "rightAligned",
+                "minWidth": 140,
+                ":valueFormatter": """
+                    params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')
+                """,
+            },
+            {
+                "headerName": "Риск",
+                "field": "risk_order",
+                "sortable": True,
+                "filter": True,
+                "minWidth": 130,
+                ":cellRenderer": """
+                    params => {
+                        const risk = params.data.risk_category;
+                        const label = params.data.risk_fmt;
+                        const color = risk === 'HIGH' ? '#dc2626' : risk === 'MEDIUM' ? '#f59e0b' : '#16a34a';
+                        return `<span style="color:${color}; font-weight:600;">${label}</span>`;
+                    }
+                """,
+            },
+            {
+                "headerName": "Действие",
+                "field": "recommended_action",
+                "sortable": True,
+                "filter": True,
+                "minWidth": 160,
+                ":cellRenderer": """
+                    params => {
+                        const value = params.value;
+                        const color = value === 'CALL NOW' ? '#dc2626'
+                            : value === 'CONTROL TODAY' ? '#f59e0b'
+                            : '#2563eb';
+                        return `<span style="color:${color}; font-weight:600;">${value}</span>`;
+                    }
+                """,
+            },
         ],
-        rows=prepare_priority_rows(),
-        row_key="client_id",
-    ).classes("w-full")
-
-    priority_table.add_slot(
-        "body-cell-client_name",
-        """
-        <q-td :props="props">
-            <q-btn
-                flat
-                dense
-                color="primary"
-                :label="props.row.client_name"
-                @click="$parent.$emit('client_click', props.row.client_id)"
-            />
-        </q-td>
-        """,
-    )
-
-    priority_table.add_slot(
-        "body-cell-total_debt",
-        """
-        <q-td :props="props" class="text-right">
-            {{ props.row.total_debt_fmt }}
-        </q-td>
-        """,
-    )
-
-    priority_table.add_slot(
-        "body-cell-overdue_debt",
-        """
-        <q-td :props="props" class="text-right">
-            {{ props.row.overdue_debt_fmt }}
-        </q-td>
-        """,
-    )
-
-    priority_table.add_slot(
-        "body-cell-risk_fmt",
-        """
-        <q-td :props="props">
-            <q-badge
-                :color="props.row.risk_category === 'HIGH' ? 'red' : props.row.risk_category === 'MEDIUM' ? 'orange' : 'green'"
-                :label="props.row.risk_fmt"
-            />
-        </q-td>
-        """,
-    )
-
-    priority_table.add_slot(
-        "body-cell-recommended_action",
-        """
-        <q-td :props="props">
-            <q-badge
-                :color="props.row.recommended_action === 'CALL NOW' ? 'red' : props.row.recommended_action === 'CONTROL TODAY' ? 'orange' : 'blue'"
-                :label="props.row.recommended_action"
-            />
-        </q-td>
-        """,
-    )
+        "rowData": prepare_priority_rows(),
+        "defaultColDef": {
+            "resizable": True,
+            "sortable": True,
+            "filter": True,
+        },
+        "pagination": True,
+        "paginationPageSize": 20,
+        "domLayout": "autoHeight",
+    }).classes("w-full")
 
     def apply_filters():
         if selected_branches:
@@ -302,8 +326,8 @@ def dashboard():
         branch_table.rows = prepare_branch_rows()
         branch_table.update()
 
-        priority_table.rows = prepare_priority_rows(search_input.value)
-        priority_table.update()
+        priority_grid.options["rowData"] = prepare_priority_rows(search_input.value)
+        priority_grid.update()
 
     def select_branch_from_table(event):
         selected_branches.clear()
@@ -314,11 +338,16 @@ def dashboard():
         selected_branches.clear()
         apply_filters()
 
-    def open_client_card(event):
-        ui.navigate.to(f"/client/{event.args}")
+    def open_client_card_from_grid(event):
+        args = event.args or {}
+        data = args.get("data") or {}
+        col_def = args.get("colDef") or {}
+
+        if col_def.get("field") == "client_name" and data.get("client_id"):
+            ui.navigate.to(f"/client/{data['client_id']}")
 
     branch_table.on("branch_click", select_branch_from_table)
-    priority_table.on("client_click", open_client_card)
+    priority_grid.on("cellClicked", open_client_card_from_grid)
     search_input.on_value_change(lambda _: apply_filters())
 
 
