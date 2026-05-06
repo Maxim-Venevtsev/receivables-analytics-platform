@@ -134,8 +134,20 @@ def dashboard():
     ui.label("АРС — Дебиторка").classes("text-3xl font-bold mb-2")
 
     with ui.row().classes("mb-4"):
-        ui.button("📊 Dashboard", on_click=lambda: ui.navigate.to("/")).props("flat color=primary")
-        ui.button("📈 Динамика", on_click=lambda: ui.navigate.to("/deltas")).props("flat color=primary")
+        ui.button(
+            "📊 Dashboard",
+            on_click=lambda: ui.navigate.to("/")
+        ).props("flat color=primary")
+
+        ui.button(
+            "📈 Динамика",
+            on_click=lambda: ui.navigate.to("/deltas")
+        ).props("flat color=primary")
+
+        ui.button(
+            "🔴 Просрочено",
+            on_click=lambda: ui.navigate.to("/overdue")
+        ).props("flat color=negative")
 
     with ui.row().classes("gap-4"):
         kpi_card("Общая задолженность", money(kpi.total_debt))
