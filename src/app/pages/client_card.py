@@ -125,8 +125,7 @@ def client_card_page(client_id: str):
     aging_summary["amount_fmt"] = aging_summary["amount"].apply(money)
     aging_summary["share_fmt"] = aging_summary["share"].apply(percent)
 
-    ui.label("Aging structure").classes("text-xl mt-2 mb-2")
-
+    
     with ui.card().classes("w-full p-4 mb-6"):
         ui.label("Распределение задолженности по срокам").classes("text-sm text-gray-500 mb-3")
 
@@ -172,7 +171,7 @@ def client_card_page(client_id: str):
             {"name": "due_date", "label": "Оплатить до", "field": "due_date"},
             {"name": "invoice_amount_fmt", "label": "Сумма", "field": "invoice_amount_fmt", "align": "right"},
             {"name": "days_overdue_real", "label": "Просрочка (дни)", "field": "days_overdue_real", "align": "right"},
-            {"name": "aging_bucket", "label": "Aging bucket", "field": "aging_bucket", "align": "center"},
+            {"name": "aging_bucket", "label": "Срок просрочки", "field": "aging_bucket", "align": "center"},
             {"name": "is_overdue_fmt", "label": "Просрочено", "field": "is_overdue_fmt", "align": "center"},
         ],
         rows=prepare_rows(),
