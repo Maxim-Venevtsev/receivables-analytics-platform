@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, text
 from src.app.pages.deltas import deltas_page
 from src.app.pages.overdue import overdue_page
 from src.app.pages.client_card import client_card_page
+from src.app.pages.forecast import due_today_page
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -149,6 +150,11 @@ def dashboard():
             on_click=lambda: ui.navigate.to("/overdue")
         ).props("flat color=negative")
 
+        ui.button(
+            "🟠 К оплате сегодня", 
+            on_click=lambda: ui.navigate.to("/due-today")
+        ).props("flat color=warning")
+
     with ui.row().classes("gap-4"):
         kpi_card("Общая задолженность", money(kpi.total_debt))
 
@@ -162,11 +168,15 @@ def dashboard():
                     "text-sm text-gray-500 h-8 flex items-center justify-center"
                 )
 
-        kpi_card(
-            "К оплате сегодня",
-            money(kpi.due_today),
-            "согласно срокам оплаты",
-        )
+        with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
+            "click", lambda: ui.navigate.to("/due-today")
+        ):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("К оплате сегодня").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                ui.label(money(kpi.due_today)).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("согласно срокам оплаты").classes(
+                    "text-sm text-gray-500 h-8 flex items-center justify-center"
+                )
 
         kpi_card("Высокий риск", str(kpi.high_risk_client_count), "клиентов в красной зоне")
 
