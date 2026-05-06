@@ -51,3 +51,13 @@ Future versions may include a simple CRM-like workflow:
 - last contact date
 - promised payment date
 - comment history
+
+## Multi-currency receivables
+
+Future versions may include multi-currency support:
+
+- separate KPI cards for RUR and EUR debt
+- currency-specific overdue amounts
+- currency-specific branch summaries
+- optional FX conversion logic
+- hiding EUR blocks when no EUR-denominated debt exists
