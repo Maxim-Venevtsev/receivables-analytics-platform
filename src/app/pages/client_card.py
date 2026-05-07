@@ -57,6 +57,9 @@ def client_card_page(client_id: str):
             client_name,
             client_group,
             invoice_date,
+            order_number,
+            print_invoice_number,
+            analytics_type,
             due_date,
             invoice_amount,
             days_overdue_real,
@@ -167,7 +170,10 @@ def client_card_page(client_id: str):
 
     table = ui.table(
         columns=[
-            {"name": "invoice_date", "label": "Дата", "field": "invoice_date"},
+            {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date"},
+            {"name": "order_number", "label": "Номер заказа", "field": "order_number"},
+            {"name": "print_invoice_number", "label": "Печ. номер накладной", "field": "print_invoice_number"},
+            {"name": "analytics_type", "label": "Аналитика", "field": "analytics_type"},
             {"name": "due_date", "label": "Оплатить до", "field": "due_date"},
             {"name": "invoice_amount_fmt", "label": "Сумма", "field": "invoice_amount_fmt", "align": "right"},
             {"name": "days_overdue_real", "label": "Просрочка (дни)", "field": "days_overdue_real", "align": "right"},
