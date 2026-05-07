@@ -5,6 +5,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
+from src.app.components.navigation import top_navigation
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -53,10 +54,7 @@ def kpi_card(title: str, value: str, subtitle: str | None = None):
 def deltas_page():
     ui.label("Динамика дебиторки").classes("text-3xl font-bold mb-2")
 
-    with ui.row().classes("mb-4"):
-        ui.button("📊 Dashboard", on_click=lambda: ui.navigate.to("/")).props("flat color=primary")
-        ui.button("📈 Динамика", on_click=lambda: ui.navigate.to("/deltas")).props("flat color=primary")
-        ui.button("🔴 Просрочено", on_click=lambda: ui.navigate.to("/overdue")).props("flat color=negative")
+    top_navigation()
 
     branches = query_df("""
         SELECT
@@ -345,7 +343,7 @@ def deltas_page():
         )
 
         if col_id == "client_name" and data.get("client_id"):
-            ui.navigate.to(f"/client/{data['client_id']}")
+            ui.navigate.to(f"/client/{data['client_id']}?from=deltas")
 
     branch_table.on("branch_click", select_branch_from_table)
     delta_grid.on("cellClicked", open_client_card_from_grid)

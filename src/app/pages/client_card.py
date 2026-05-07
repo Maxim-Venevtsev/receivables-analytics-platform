@@ -5,6 +5,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
+from fastapi import Request
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -56,7 +57,19 @@ def aging_bucket(row) -> str:
 
 
 @ui.page("/client/{client_id}")
-def client_card_page(client_id: str):
+def client_card_page(client_id: str, request: Request):
+
+    origin = request.query_params.get("from", "dashboard")
+
+    back_routes = {
+        "dashboard": "/",
+        "deltas": "/deltas",
+        "overdue": "/overdue",
+        "due-today": "/due-today",
+        "due-soon": "/due-soon",
+    }
+
+    back_target = back_routes.get(origin, "/")
 
     df = query_df("""
         SELECT
@@ -94,7 +107,7 @@ def client_card_page(client_id: str):
     ).classes("text-sm text-gray-500 mb-4")
 
     with ui.row().classes("mb-4"):
-        ui.button("← Назад", on_click=lambda: ui.navigate.to("/overdue")).props("flat color=primary")
+        ui.button("← Назад", on_click=lambda: ui.navigate.to(back_target)).props("flat color=primary")
 
     total_debt = df["invoice_amount"].sum()
     overdue_debt = df[df["is_overdue_real"]]["invoice_amount"].sum()

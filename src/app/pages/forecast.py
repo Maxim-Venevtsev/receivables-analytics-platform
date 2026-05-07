@@ -5,6 +5,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
+from src.app.components.navigation import top_navigation
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -78,12 +79,7 @@ def render_forecast_page(mode: str):
     page_title = "К оплате сегодня" if is_due_today_page else "К оплате в ближайшие дни"
     ui.label(page_title).classes("text-3xl font-bold mb-2")
 
-    with ui.row().classes("mb-4"):
-        ui.button("📊 Главная", on_click=lambda: ui.navigate.to("/")).props("flat color=primary")
-        ui.button("📈 Динамика", on_click=lambda: ui.navigate.to("/deltas")).props("flat color=primary")
-        ui.button("🔴 Просрочено", on_click=lambda: ui.navigate.to("/overdue")).props("flat color=negative")
-        ui.button("🟠 К оплате сегодня", on_click=lambda: ui.navigate.to("/due-today")).props("flat color=warning")
-        ui.button("🟡 Ближайшие 3 дня", on_click=lambda: ui.navigate.to("/due-soon")).props("flat color=warning")
+    top_navigation()
 
     df = load_forecast_df()
 
@@ -398,7 +394,8 @@ def render_forecast_page(mode: str):
         )
 
         if col_id == "client_name" and data.get("client_id"):
-            ui.navigate.to(f"/client/{data['client_id']}")
+            origin = "due-today" if mode == "today" else "due-soon"
+            ui.navigate.to(f"/client/{data['client_id']}?from={origin}")
 
     branch_table.on("branch_click", select_branch_from_table)
     grid.on("cellClicked", open_client_card_from_grid)

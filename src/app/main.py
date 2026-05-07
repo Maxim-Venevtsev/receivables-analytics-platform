@@ -387,7 +387,7 @@ def dashboard():
         )
 
         if col_id == "client_name" and data.get("client_id"):
-            ui.navigate.to(f"/client/{data['client_id']}")
+            ui.navigate.to(f"/client/{data['client_id']}?from=dashboard")
 
     branch_table.on("branch_click", select_branch_from_table)
     priority_grid.on("cellClicked", open_client_card_from_grid)
