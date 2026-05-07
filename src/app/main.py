@@ -66,16 +66,6 @@ def risk_order(category: str) -> int:
 def dashboard():
     kpi = query_df("SELECT * FROM core.v_dashboard_overview").iloc[0]
 
-    branches = query_df("""
-        SELECT
-            client_group,
-            total_debt,
-            overdue_debt,
-            overdue_share_pct
-        FROM core.v_branch_summary
-        ORDER BY total_debt DESC
-    """)
-
     priority = query_df("""
         SELECT
             client_id,
@@ -83,18 +73,42 @@ def dashboard():
             client_group,
             total_debt,
             overdue_debt,
+            due_today,
+            due_in_3_days,
             risk_category,
             recommended_action
         FROM core.v_client_priority
         ORDER BY risk_score DESC
-        LIMIT 100
     """)
+
+    priority["due_soon_only"] = (
+        priority["due_in_3_days"] - priority["due_today"]
+    ).clip(lower=0)
+
+    branches = (
+        priority.groupby("client_group", as_index=False)
+        .agg(
+            total_debt=("total_debt", "sum"),
+            due_today=("due_today", "sum"),
+            due_soon_only=("due_soon_only", "sum"),
+            overdue_debt=("overdue_debt", "sum"),
+        )
+    )
+    branches["overdue_share_pct"] = (
+        branches["overdue_debt"] / branches["total_debt"] * 100
+    ).fillna(0)
 
     selected_branches: list[str] = []
 
     def normalize_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
-        for col in ["total_debt", "overdue_debt", "overdue_share_pct"]:
+        for col in [
+            "total_debt",
+            "overdue_debt",
+            "overdue_share_pct",
+            "due_today",
+            "due_soon_only",
+        ]:
             if col in df.columns:
                 df[col] = df[col].astype(float)
         return df
@@ -106,16 +120,15 @@ def dashboard():
             df = df[df["client_group"].isin(selected_branches)]
 
         df["total_debt_fmt"] = df["total_debt"].apply(money)
+        df["due_today_fmt"] = df["due_today"].apply(money)
+        df["due_soon_only_fmt"] = df["due_soon_only"].apply(money)
         df["overdue_debt_fmt"] = df["overdue_debt"].apply(money)
         df["overdue_share_fmt"] = df["overdue_share_pct"].apply(percent)
 
         return df.to_dict("records")
 
     def prepare_priority_rows(search_text: str = ""):
-        df = priority.copy()
-
-        for col in ["total_debt", "overdue_debt"]:
-            df[col] = df[col].astype(float)
+        df = normalize_numeric_columns(priority)
 
         if selected_branches:
             df = df[df["client_group"].isin(selected_branches)]
@@ -132,31 +145,35 @@ def dashboard():
 
         return df.to_dict("records")
 
+    total_due_today = priority["due_today"].sum()
+    total_due_soon = priority["due_soon_only"].sum()
+
     ui.label("АРС — Дебиторка").classes("text-3xl font-bold mb-2")
 
     with ui.row().classes("mb-4"):
-        ui.button(
-            "📊 Dashboard",
-            on_click=lambda: ui.navigate.to("/")
-        ).props("flat color=primary")
-
-        ui.button(
-            "📈 Динамика",
-            on_click=lambda: ui.navigate.to("/deltas")
-        ).props("flat color=primary")
-
-        ui.button(
-            "🔴 Просрочено",
-            on_click=lambda: ui.navigate.to("/overdue")
-        ).props("flat color=negative")
-
-        ui.button(
-            "🟠 К оплате сегодня", 
-            on_click=lambda: ui.navigate.to("/due-today")
-        ).props("flat color=warning")
+        ui.button("📊 Главная", on_click=lambda: ui.navigate.to("/")).props("flat color=primary")
+        ui.button("📈 Динамика", on_click=lambda: ui.navigate.to("/deltas")).props("flat color=primary")
+        ui.button("🔴 Просрочено", on_click=lambda: ui.navigate.to("/overdue")).props("flat color=negative")
+        ui.button("🟠 К оплате сегодня", on_click=lambda: ui.navigate.to("/due-today")).props("flat color=warning")
 
     with ui.row().classes("gap-4"):
         kpi_card("Общая задолженность", money(kpi.total_debt))
+
+        with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
+            "click", lambda: ui.navigate.to("/due-today")
+        ):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("К оплате сегодня").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                ui.label(money(total_due_today)).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("согласно срокам оплаты").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
+
+        with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
+            "click", lambda: ui.navigate.to("/due-today")
+        ):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("К оплате в ближайшие дни").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                ui.label(money(total_due_soon)).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("в ближайшие 3 дня").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
         with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
             "click", lambda: ui.navigate.to("/overdue")
@@ -168,33 +185,22 @@ def dashboard():
                     "text-sm text-gray-500 h-8 flex items-center justify-center"
                 )
 
-        with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
-            "click", lambda: ui.navigate.to("/due-today")
-        ):
-            with ui.column().classes("w-full h-full items-center justify-between text-center"):
-                ui.label("К оплате сегодня").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
-                ui.label(money(kpi.due_today)).classes("text-2xl font-bold h-10 flex items-center justify-center")
-                ui.label("согласно срокам оплаты").classes(
-                    "text-sm text-gray-500 h-8 flex items-center justify-center"
-                )
-
         kpi_card("Высокий риск", str(kpi.high_risk_client_count), "клиентов в красной зоне")
 
     ui.separator().classes("my-4")
 
     with ui.row().classes("items-center gap-4"):
         selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
-        ui.button(
-            "ВСЕ ФИЛИАЛЫ",
-            on_click=lambda: reset_branch_filter(),
-        ).props("flat color=primary")
+        ui.button("ВСЕ ФИЛИАЛЫ", on_click=lambda: reset_branch_filter()).props("flat color=primary")
 
     ui.label("Филиалы").classes("text-xl mt-6")
 
     branch_table = ui.table(
         columns=[
             {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
-            {"name": "total_debt", "label": "Долг", "field": "total_debt", "align": "right", "sortable": True},
+            {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
+            {"name": "due_today", "label": "К оплате сегодня", "field": "due_today", "align": "right", "sortable": True},
+            {"name": "due_soon_only", "label": "К оплате в ближайшие дни", "field": "due_soon_only", "align": "right", "sortable": True},
             {"name": "overdue_debt", "label": "Просрочка", "field": "overdue_debt", "align": "right", "sortable": True},
             {"name": "overdue_share_pct", "label": "% просрочки", "field": "overdue_share_pct", "align": "right", "sortable": True},
         ],
@@ -221,6 +227,28 @@ def dashboard():
         """
         <q-td :props="props" class="text-right">
             {{ props.row.total_debt_fmt }}
+        </q-td>
+        """,
+    )
+
+    branch_table.add_slot(
+        "body-cell-due_today",
+        """
+        <q-td :props="props" class="text-right">
+            <span style="color:#f59e0b; font-weight:600;">
+                {{ props.row.due_today_fmt }}
+            </span>
+        </q-td>
+        """,
+    )
+
+    branch_table.add_slot(
+        "body-cell-due_soon_only",
+        """
+        <q-td :props="props" class="text-right">
+            <span style="color:#ca8a04; font-weight:600;">
+                {{ props.row.due_soon_only_fmt }}
+            </span>
         </q-td>
         """,
     )
@@ -266,13 +294,7 @@ def dashboard():
                     params => `<span style="color:#1976d2; cursor:pointer; font-weight:500;">${params.value}</span>`
                 """,
             },
-            {
-                "headerName": "Филиал",
-                "field": "client_group",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 130,
-            },
+            {"headerName": "Филиал", "field": "client_group", "sortable": True, "filter": True, "minWidth": 130},
             {
                 "headerName": "Долг",
                 "field": "total_debt",
@@ -328,21 +350,14 @@ def dashboard():
             },
         ],
         "rowData": prepare_priority_rows(),
-        "defaultColDef": {
-            "resizable": True,
-            "sortable": True,
-            "filter": True,
-        },
+        "defaultColDef": {"resizable": True, "sortable": True, "filter": True},
         "pagination": True,
         "paginationPageSize": 20,
         "domLayout": "autoHeight",
     }).classes("w-full")
 
     def apply_filters():
-        if selected_branches:
-            selected_branch_label.text = f"Фильтр: {', '.join(selected_branches)}"
-        else:
-            selected_branch_label.text = "Показаны все филиалы"
+        selected_branch_label.text = f"Фильтр: {', '.join(selected_branches)}" if selected_branches else "Показаны все филиалы"
         selected_branch_label.update()
 
         branch_table.rows = prepare_branch_rows()
