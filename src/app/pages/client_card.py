@@ -102,9 +102,15 @@ def client_card_page(client_id: str, request: Request):
     parent_org_id = df["parent_org_id"].iloc[0]
 
     ui.label(f"Карточка клиента: {client_name}").classes("text-3xl font-bold mb-1")
-    ui.label(
-        f"Клиент ID: {client_id} · Вышестоящая организация: {parent_org_id} · Филиал: {client_group}"
-    ).classes("text-sm text-gray-500 mb-4")
+    with ui.row().classes("items-center gap-1 text-sm text-gray-500 mb-4"):
+        ui.label(f"Клиент ID: {client_id} · Вышестоящая организация:")
+
+        ui.button(
+            str(parent_org_id),
+            on_click=lambda: ui.navigate.to(f"/parent-org/{parent_org_id}?from=client&client_id={client_id}")
+        ).props("flat dense color=primary").classes("p-0 min-h-0")
+
+        ui.label(f"· Филиал: {client_group}")
 
     with ui.row().classes("mb-4"):
         ui.button("← Назад", on_click=lambda: ui.navigate.to(back_target)).props("flat color=primary")

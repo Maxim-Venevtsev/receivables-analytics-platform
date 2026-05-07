@@ -10,6 +10,7 @@ from src.app.pages.deltas import deltas_page
 from src.app.pages.overdue import overdue_page
 from src.app.pages.client_card import client_card_page
 from src.app.pages.forecast import due_today_page
+from src.app.pages.parent_org_card import parent_org_card_page
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
