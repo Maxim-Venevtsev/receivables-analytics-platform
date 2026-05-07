@@ -236,7 +236,11 @@ def deltas_page():
                 "filter": True,
                 "minWidth": 260,
                 ":cellRenderer": """
-                    params => `<span style="color:#1976d2; cursor:pointer; font-weight:500;">${params.value}</span>`
+                    params => `
+                        <span style="color:#1976d2; cursor:pointer; font-weight:500;">
+                            ${params.data.client_id} · ${params.value}
+                        </span>
+                    `
                 """,
             },
             {
