@@ -51,16 +51,7 @@ def kpi_card(title: str, value: str, subtitle: str | None = None):
             ui.label(subtitle or "").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
 
-@ui.page("/due-today")
-def due_today_page():
-    ui.label("К оплате сегодня").classes("text-3xl font-bold mb-2")
-
-    with ui.row().classes("mb-4"):
-        ui.button("📊 Dashboard", on_click=lambda: ui.navigate.to("/")).props("flat color=primary")
-        ui.button("📈 Динамика", on_click=lambda: ui.navigate.to("/deltas")).props("flat color=primary")
-        ui.button("🔴 Просрочено", on_click=lambda: ui.navigate.to("/overdue")).props("flat color=negative")
-        ui.button("🟠 К оплате сегодня", on_click=lambda: ui.navigate.to("/due-today")).props("flat color=warning")
-
+def load_forecast_df() -> pd.DataFrame:
     df = query_df("""
         SELECT
             client_id,
@@ -77,30 +68,55 @@ def due_today_page():
         ORDER BY due_today DESC, due_in_3_days DESC
     """)
 
-    df["due_soon_only"] = df["due_in_3_days"] - df["due_today"]
-    df["due_soon_only"] = df["due_soon_only"].clip(lower=0)
+    df["due_soon_only"] = (df["due_in_3_days"] - df["due_today"]).clip(lower=0)
+    return df
+
+
+def render_forecast_page(mode: str):
+    is_due_today_page = mode == "today"
+
+    page_title = "К оплате сегодня" if is_due_today_page else "К оплате в ближайшие дни"
+    ui.label(page_title).classes("text-3xl font-bold mb-2")
+
+    with ui.row().classes("mb-4"):
+        ui.button("📊 Главная", on_click=lambda: ui.navigate.to("/")).props("flat color=primary")
+        ui.button("📈 Динамика", on_click=lambda: ui.navigate.to("/deltas")).props("flat color=primary")
+        ui.button("🔴 Просрочено", on_click=lambda: ui.navigate.to("/overdue")).props("flat color=negative")
+        ui.button("🟠 К оплате сегодня", on_click=lambda: ui.navigate.to("/due-today")).props("flat color=warning")
+        ui.button("🟡 Ближайшие 3 дня", on_click=lambda: ui.navigate.to("/due-soon")).props("flat color=warning")
+
+    df = load_forecast_df()
+
+    if not is_due_today_page:
+        df = df[df["due_soon_only"] > 0]
 
     if df.empty:
-        ui.label("На сегодня и ближайшие дни нет платежей к контролю.").classes("text-lg text-green-700")
+        message = (
+            "На сегодня нет платежей к контролю."
+            if is_due_today_page
+            else "На ближайшие 3 дня нет платежей к контролю."
+        )
+        ui.label(message).classes("text-lg text-green-700")
         return
+
+    selected_branches: list[str] = []
+
+    def normalize_numeric_columns(source_df: pd.DataFrame) -> pd.DataFrame:
+        result = source_df.copy()
+        for col in ["total_debt", "overdue_debt", "due_today", "due_in_3_days", "due_soon_only", "clients_to_control"]:
+            if col in result.columns:
+                result[col] = result[col].astype(float)
+        return result
 
     branches = (
         df.groupby("client_group", as_index=False)
         .agg(
             total_debt=("total_debt", "sum"),
             due_today=("due_today", "sum"),
+            due_soon_only=("due_soon_only", "sum"),
             clients_to_control=("client_id", "nunique"),
         )
     )
-
-    selected_branches: list[str] = []
-
-    def normalize_numeric_columns(source_df: pd.DataFrame) -> pd.DataFrame:
-        result = source_df.copy()
-        for col in ["total_debt", "overdue_debt", "due_today", "due_in_3_days", "clients_to_control"]:
-            if col in result.columns:
-                result[col] = result[col].astype(float)
-        return result
 
     def prepare_branch_rows():
         branch_df = normalize_numeric_columns(branches)
@@ -110,27 +126,28 @@ def due_today_page():
 
         branch_df["total_debt_fmt"] = branch_df["total_debt"].apply(money)
         branch_df["due_today_fmt"] = branch_df["due_today"].apply(money)
+        branch_df["due_soon_only_fmt"] = branch_df["due_soon_only"].apply(money)
         branch_df["clients_to_control_fmt"] = branch_df["clients_to_control"].astype(int).astype(str)
 
         return branch_df.to_dict("records")
 
-    def prepare_due_today_rows(search_text: str = ""):
-        due_df = normalize_numeric_columns(df)
+    def prepare_rows(search_text: str = ""):
+        result = normalize_numeric_columns(df)
 
         if selected_branches:
-            due_df = due_df[due_df["client_group"].isin(selected_branches)]
+            result = result[result["client_group"].isin(selected_branches)]
 
         search_text = (search_text or "").strip().lower()
         if search_text:
-            due_df = due_df[
-                due_df["client_id"].astype(str).str.lower().str.contains(search_text, na=False)
-                | due_df["client_name"].astype(str).str.lower().str.contains(search_text, na=False)
+            result = result[
+                result["client_id"].astype(str).str.lower().str.contains(search_text, na=False)
+                | result["client_name"].astype(str).str.lower().str.contains(search_text, na=False)
             ]
 
-        due_df["risk_fmt"] = due_df["risk_category"].apply(risk_badge)
-        due_df["risk_order"] = due_df["risk_category"].apply(risk_order)
+        result["risk_fmt"] = result["risk_category"].apply(risk_badge)
+        result["risk_order"] = result["risk_category"].apply(risk_order)
 
-        return due_df.to_dict("records")
+        return result.to_dict("records")
 
     total_due_today = df["due_today"].sum()
     total_due_soon = df["due_soon_only"].sum()
@@ -138,8 +155,13 @@ def due_today_page():
     high_risk_count = int((df["risk_category"] == "HIGH").sum())
 
     with ui.row().classes("gap-4"):
-        kpi_card("К оплате сегодня", money(total_due_today))
-        kpi_card("К оплате в ближайшие дни", money(total_due_soon))
+        if is_due_today_page:
+            kpi_card("К оплате сегодня", money(total_due_today))
+            kpi_card("К оплате в ближайшие дни", money(total_due_soon))
+        else:
+            kpi_card("К оплате в ближайшие дни", money(total_due_soon))
+            kpi_card("К оплате сегодня", money(total_due_today))
+
         kpi_card("Клиентов к контролю", str(client_count))
         kpi_card("Высокий риск", str(high_risk_count), "клиентов в красной зоне")
 
@@ -147,22 +169,23 @@ def due_today_page():
 
     with ui.row().classes("items-center gap-4"):
         selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
-        ui.button(
-            "ВСЕ ФИЛИАЛЫ",
-            on_click=lambda: reset_branch_filter(),
-        ).props("flat color=primary")
+        ui.button("ВСЕ ФИЛИАЛЫ", on_click=lambda: reset_branch_filter()).props("flat color=primary")
 
     ui.label("Филиалы").classes("text-xl mt-6")
 
-    branch_table = ui.table(
-        columns=[
-            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
-            {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
-            {"name": "due_today", "label": "К оплате сегодня", "field": "due_today", "align": "right", "sortable": True},
-            {"name": "clients_to_control", "label": "Клиентов к контролю", "field": "clients_to_control", "align": "right", "sortable": True},
-        ],
-        rows=prepare_branch_rows(),
-    ).classes("w-full")
+    branch_columns = [
+        {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
+        {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
+    ]
+
+    if is_due_today_page:
+        branch_columns.append({"name": "due_today", "label": "К оплате сегодня", "field": "due_today", "align": "right", "sortable": True})
+    else:
+        branch_columns.append({"name": "due_soon_only", "label": "К оплате в ближайшие дни", "field": "due_soon_only", "align": "right", "sortable": True})
+
+    branch_columns.append({"name": "clients_to_control", "label": "Клиентов к контролю", "field": "clients_to_control", "align": "right", "sortable": True})
+
+    branch_table = ui.table(columns=branch_columns, rows=prepare_branch_rows()).classes("w-full")
 
     branch_table.add_slot(
         "body-cell-client_group",
@@ -192,7 +215,20 @@ def due_today_page():
         "body-cell-due_today",
         """
         <q-td :props="props" class="text-right">
-            {{ props.row.due_today_fmt }}
+            <span style="color:#f59e0b; font-weight:600;">
+                {{ props.row.due_today_fmt }}
+            </span>
+        </q-td>
+        """,
+    )
+
+    branch_table.add_slot(
+        "body-cell-due_soon_only",
+        """
+        <q-td :props="props" class="text-right">
+            <span style="color:#ca8a04; font-weight:600;">
+                {{ props.row.due_soon_only_fmt }}
+            </span>
         </q-td>
         """,
     )
@@ -214,108 +250,114 @@ def due_today_page():
             placeholder="Например: Регинас или 2755",
         ).props("clearable").classes("w-96")
 
-    due_grid = ui.aggrid({
-        "columnDefs": [
-            {
-                "headerName": "Клиент",
-                "field": "client_name",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 260,
-                ":cellRenderer": """
-                    params => `<span style="color:#1976d2; cursor:pointer; font-weight:500;">${params.value}</span>`
-                """,
-            },
-            {
-                "headerName": "Филиал",
-                "field": "client_group",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 130,
-            },
-            {
-                "headerName": "Весь долг",
-                "field": "total_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 140,
-                ":valueFormatter": """
-                    params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')
-                """,
-            },
-            {
-                "headerName": "К оплате сегодня",
-                "field": "due_today",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 170,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        return `<span style="color:#f59e0b; font-weight:600;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "К оплате в ближайшие дни",
-                "field": "due_soon_only",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 210,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        return `<span style="color:#ca8a04; font-weight:600;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "Просрочка",
-                "field": "overdue_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 140,
-                ":valueFormatter": """
-                    params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')
-                """,
-            },
-            {
-                "headerName": "Риск",
-                "field": "risk_order",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 130,
-                ":cellRenderer": """
-                    params => {
-                        const risk = params.data.risk_category;
-                        const label = params.data.risk_fmt;
-                        const color = risk === 'HIGH' ? '#dc2626' : risk === 'MEDIUM' ? '#f59e0b' : '#16a34a';
-                        return `<span style="color:${color}; font-weight:600;">${label}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "Действие",
-                "field": "recommended_action",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 160,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value;
-                        const color = value === 'CALL NOW' ? '#dc2626'
-                            : value === 'CONTROL TODAY' ? '#f59e0b'
-                            : '#2563eb';
-                        return `<span style="color:${color}; font-weight:600;">${value}</span>`;
-                    }
-                """,
-            },
-        ],
-        "rowData": prepare_due_today_rows(),
+    client_columns = [
+        {
+            "headerName": "Клиент",
+            "field": "client_name",
+            "sortable": True,
+            "filter": True,
+            "minWidth": 260,
+            ":cellRenderer": """
+                params => `<span style="color:#1976d2; cursor:pointer; font-weight:500;">${params.value}</span>`
+            """,
+        },
+        {"headerName": "Филиал", "field": "client_group", "sortable": True, "filter": True, "minWidth": 130},
+        {
+            "headerName": "Весь долг",
+            "field": "total_debt",
+            "sortable": True,
+            "filter": "agNumberColumnFilter",
+            "type": "rightAligned",
+            "minWidth": 140,
+            ":valueFormatter": """
+                params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')
+            """,
+        },
+    ]
+
+    due_today_col = {
+        "headerName": "К оплате сегодня",
+        "field": "due_today",
+        "sortable": True,
+        "filter": "agNumberColumnFilter",
+        "type": "rightAligned",
+        "minWidth": 170,
+        ":cellRenderer": """
+            params => {
+                const value = params.value || 0;
+                return `<span style="color:#f59e0b; font-weight:600;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
+            }
+        """,
+    }
+
+    due_soon_col = {
+        "headerName": "К оплате в ближайшие дни",
+        "field": "due_soon_only",
+        "sortable": True,
+        "filter": "agNumberColumnFilter",
+        "type": "rightAligned",
+        "minWidth": 210,
+        ":cellRenderer": """
+            params => {
+                const value = params.value || 0;
+                return `<span style="color:#ca8a04; font-weight:600;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
+            }
+        """,
+    }
+
+    if is_due_today_page:
+        client_columns.extend([due_today_col, due_soon_col])
+    else:
+        client_columns.extend([due_soon_col, due_today_col])
+
+    client_columns.extend([
+        {
+            "headerName": "Просрочка",
+            "field": "overdue_debt",
+            "sortable": True,
+            "filter": "agNumberColumnFilter",
+            "type": "rightAligned",
+            "minWidth": 140,
+            ":valueFormatter": """
+                params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')
+            """,
+        },
+        {
+            "headerName": "Риск",
+            "field": "risk_order",
+            "sortable": True,
+            "filter": True,
+            "minWidth": 130,
+            ":cellRenderer": """
+                params => {
+                    const risk = params.data.risk_category;
+                    const label = params.data.risk_fmt;
+                    const color = risk === 'HIGH' ? '#dc2626' : risk === 'MEDIUM' ? '#f59e0b' : '#16a34a';
+                    return `<span style="color:${color}; font-weight:600;">${label}</span>`;
+                }
+            """,
+        },
+        {
+            "headerName": "Действие",
+            "field": "recommended_action",
+            "sortable": True,
+            "filter": True,
+            "minWidth": 160,
+            ":cellRenderer": """
+                params => {
+                    const value = params.value;
+                    const color = value === 'CALL NOW' ? '#dc2626'
+                        : value === 'CONTROL TODAY' ? '#f59e0b'
+                        : '#2563eb';
+                    return `<span style="color:${color}; font-weight:600;">${value}</span>`;
+                }
+            """,
+        },
+    ])
+
+    grid = ui.aggrid({
+        "columnDefs": client_columns,
+        "rowData": prepare_rows(),
         "defaultColDef": {
             "resizable": True,
             "sortable": True,
@@ -327,17 +369,14 @@ def due_today_page():
     }).classes("w-full")
 
     def apply_filters():
-        if selected_branches:
-            selected_branch_label.text = f"Фильтр: {', '.join(selected_branches)}"
-        else:
-            selected_branch_label.text = "Показаны все филиалы"
+        selected_branch_label.text = f"Фильтр: {', '.join(selected_branches)}" if selected_branches else "Показаны все филиалы"
         selected_branch_label.update()
 
         branch_table.rows = prepare_branch_rows()
         branch_table.update()
 
-        due_grid.options["rowData"] = prepare_due_today_rows(search_input.value)
-        due_grid.update()
+        grid.options["rowData"] = prepare_rows(search_input.value)
+        grid.update()
 
     def select_branch_from_table(event):
         selected_branches.clear()
@@ -362,5 +401,15 @@ def due_today_page():
             ui.navigate.to(f"/client/{data['client_id']}")
 
     branch_table.on("branch_click", select_branch_from_table)
-    due_grid.on("cellClicked", open_client_card_from_grid)
+    grid.on("cellClicked", open_client_card_from_grid)
     search_input.on_value_change(lambda _: apply_filters())
+
+
+@ui.page("/due-today")
+def due_today_page():
+    render_forecast_page("today")
+
+
+@ui.page("/due-soon")
+def due_soon_page():
+    render_forecast_page("soon")

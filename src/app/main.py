@@ -155,6 +155,7 @@ def dashboard():
         ui.button("📈 Динамика", on_click=lambda: ui.navigate.to("/deltas")).props("flat color=primary")
         ui.button("🔴 Просрочено", on_click=lambda: ui.navigate.to("/overdue")).props("flat color=negative")
         ui.button("🟠 К оплате сегодня", on_click=lambda: ui.navigate.to("/due-today")).props("flat color=warning")
+        ui.button("🟡 Ближайшие 3 дня", on_click=lambda: ui.navigate.to("/due-soon")).props("flat color=warning")
 
     with ui.row().classes("gap-4"):
         kpi_card("Общая задолженность", money(kpi.total_debt))
@@ -168,7 +169,7 @@ def dashboard():
                 ui.label("согласно срокам оплаты").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
         with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
-            "click", lambda: ui.navigate.to("/due-today")
+            "click", lambda: ui.navigate.to("/due-soon")
         ):
             with ui.column().classes("w-full h-full items-center justify-between text-center"):
                 ui.label("К оплате в ближайшие дни").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
