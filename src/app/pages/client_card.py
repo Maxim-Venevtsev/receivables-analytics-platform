@@ -63,7 +63,8 @@ def client_card_page(client_id: str):
             due_date,
             invoice_amount,
             days_overdue_real,
-            is_overdue_real
+            is_overdue_real,
+            is_due_today
         FROM core.receivables_snapshot_fact
         WHERE client_id = :client_id
         ORDER BY invoice_date DESC
@@ -187,12 +188,12 @@ def client_card_page(client_id: str):
         "body",
         """
         <q-tr :props="props"
-              :class="props.row.is_overdue_real ? 'bg-red-100' : ''">
+            :class="props.row.is_overdue_real ? 'bg-red-100' : props.row.is_due_today ? 'bg-orange-100' : ''">
             <q-td v-for="col in props.cols" :key="col.name" :props="props">
-                {{ col.value }}
+            {{ col.value }}
             </q-td>
         </q-tr>
-        """
+    """
     )
 
     def refresh():
