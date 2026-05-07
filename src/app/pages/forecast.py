@@ -27,12 +27,6 @@ def money(value) -> str:
     return f"{float(value):,.0f}".replace(",", " ")
 
 
-def percent(value) -> str:
-    if pd.isna(value):
-        return "0%"
-    return f"{float(value):.1f}%"
-
-
 def risk_badge(category: str) -> str:
     if category == "HIGH":
         return "🔴 Высокий"
@@ -75,32 +69,35 @@ def due_today_page():
             total_debt,
             overdue_debt,
             due_today,
+            due_in_3_days,
             risk_category,
             recommended_action
         FROM core.v_client_priority
-        WHERE due_today > 0
-        ORDER BY due_today DESC
+        WHERE due_today > 0 OR due_in_3_days > 0
+        ORDER BY due_today DESC, due_in_3_days DESC
     """)
 
+    df["due_soon_only"] = df["due_in_3_days"] - df["due_today"]
+    df["due_soon_only"] = df["due_soon_only"].clip(lower=0)
+
     if df.empty:
-        ui.label("На сегодня нет платежей к контролю.").classes("text-lg text-green-700")
+        ui.label("На сегодня и ближайшие дни нет платежей к контролю.").classes("text-lg text-green-700")
         return
 
     branches = (
         df.groupby("client_group", as_index=False)
         .agg(
             total_debt=("total_debt", "sum"),
-            overdue_debt=("overdue_debt", "sum"),
             due_today=("due_today", "sum"),
+            clients_to_control=("client_id", "nunique"),
         )
     )
-    branches["due_today_share_pct"] = branches["due_today"] / branches["total_debt"] * 100
 
     selected_branches: list[str] = []
 
     def normalize_numeric_columns(source_df: pd.DataFrame) -> pd.DataFrame:
         result = source_df.copy()
-        for col in ["total_debt", "overdue_debt", "due_today", "due_today_share_pct"]:
+        for col in ["total_debt", "overdue_debt", "due_today", "due_in_3_days", "clients_to_control"]:
             if col in result.columns:
                 result[col] = result[col].astype(float)
         return result
@@ -112,9 +109,8 @@ def due_today_page():
             branch_df = branch_df[branch_df["client_group"].isin(selected_branches)]
 
         branch_df["total_debt_fmt"] = branch_df["total_debt"].apply(money)
-        branch_df["overdue_debt_fmt"] = branch_df["overdue_debt"].apply(money)
         branch_df["due_today_fmt"] = branch_df["due_today"].apply(money)
-        branch_df["due_today_share_fmt"] = branch_df["due_today_share_pct"].apply(percent)
+        branch_df["clients_to_control_fmt"] = branch_df["clients_to_control"].astype(int).astype(str)
 
         return branch_df.to_dict("records")
 
@@ -137,14 +133,14 @@ def due_today_page():
         return due_df.to_dict("records")
 
     total_due_today = df["due_today"].sum()
-    total_overdue = df["overdue_debt"].sum()
+    total_due_soon = df["due_soon_only"].sum()
     client_count = df["client_id"].nunique()
     high_risk_count = int((df["risk_category"] == "HIGH").sum())
 
     with ui.row().classes("gap-4"):
         kpi_card("К оплате сегодня", money(total_due_today))
+        kpi_card("К оплате в ближайшие дни", money(total_due_soon))
         kpi_card("Клиентов к контролю", str(client_count))
-        kpi_card("Просрочка у этих клиентов", money(total_overdue))
         kpi_card("Высокий риск", str(high_risk_count), "клиентов в красной зоне")
 
     ui.separator().classes("my-4")
@@ -162,9 +158,8 @@ def due_today_page():
         columns=[
             {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
             {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
-            {"name": "overdue_debt", "label": "Просрочка", "field": "overdue_debt", "align": "right", "sortable": True},
             {"name": "due_today", "label": "К оплате сегодня", "field": "due_today", "align": "right", "sortable": True},
-            {"name": "due_today_share_pct", "label": "% сегодня", "field": "due_today_share_pct", "align": "right", "sortable": True},
+            {"name": "clients_to_control", "label": "Клиентов к контролю", "field": "clients_to_control", "align": "right", "sortable": True},
         ],
         rows=prepare_branch_rows(),
     ).classes("w-full")
@@ -194,15 +189,6 @@ def due_today_page():
     )
 
     branch_table.add_slot(
-        "body-cell-overdue_debt",
-        """
-        <q-td :props="props" class="text-right">
-            {{ props.row.overdue_debt_fmt }}
-        </q-td>
-        """,
-    )
-
-    branch_table.add_slot(
         "body-cell-due_today",
         """
         <q-td :props="props" class="text-right">
@@ -212,13 +198,10 @@ def due_today_page():
     )
 
     branch_table.add_slot(
-        "body-cell-due_today_share_pct",
+        "body-cell-clients_to_control",
         """
-        <q-td :props="props">
-            <q-badge
-                color="orange"
-                :label="props.row.due_today_share_fmt"
-            />
+        <q-td :props="props" class="text-right">
+            {{ props.row.clients_to_control_fmt }}
         </q-td>
         """,
     )
@@ -262,17 +245,6 @@ def due_today_page():
                 """,
             },
             {
-                "headerName": "Просрочка",
-                "field": "overdue_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 140,
-                ":valueFormatter": """
-                    params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')
-                """,
-            },
-            {
                 "headerName": "К оплате сегодня",
                 "field": "due_today",
                 "sortable": True,
@@ -284,6 +256,31 @@ def due_today_page():
                         const value = params.value || 0;
                         return `<span style="color:#f59e0b; font-weight:600;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
                     }
+                """,
+            },
+            {
+                "headerName": "К оплате в ближайшие дни",
+                "field": "due_soon_only",
+                "sortable": True,
+                "filter": "agNumberColumnFilter",
+                "type": "rightAligned",
+                "minWidth": 210,
+                ":cellRenderer": """
+                    params => {
+                        const value = params.value || 0;
+                        return `<span style="color:#ca8a04; font-weight:600;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
+                    }
+                """,
+            },
+            {
+                "headerName": "Просрочка",
+                "field": "overdue_debt",
+                "sortable": True,
+                "filter": "agNumberColumnFilter",
+                "type": "rightAligned",
+                "minWidth": 140,
+                ":valueFormatter": """
+                    params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')
                 """,
             },
             {
