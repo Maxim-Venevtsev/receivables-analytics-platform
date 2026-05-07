@@ -37,14 +37,22 @@ def kpi_card(title: str, value: str, subtitle: str | None = None):
             ui.label(subtitle or "").classes("text-sm text-gray-500")
 
 
-def aging_bucket(days: int) -> str:
-    if days <= 0:
-        return "Не просрочено"
-    if days <= 7:
-        return "1–7 дней"
-    if days <= 30:
-        return "8–30 дней"
-    return "31+ дней"
+def aging_bucket(row) -> str:
+    if row["is_overdue_real"]:
+        days = int(row["days_overdue_real"])
+        if days <= 7:
+            return "1–7 дней"
+        if days <= 30:
+            return "8–30 дней"
+        return "31+ дней"
+
+    if row["is_due_today"]:
+        return "К оплате сегодня"
+
+    if row["is_due_in_3_days"]:
+        return "К оплате в ближайшие дни"
+
+    return "Не просрочено"
 
 
 @ui.page("/client/{client_id}")
@@ -64,7 +72,8 @@ def client_card_page(client_id: str):
             invoice_amount,
             days_overdue_real,
             is_overdue_real,
-            is_due_today
+            is_due_today,
+            is_due_in_3_days
         FROM core.receivables_snapshot_fact
         WHERE client_id = :client_id
         ORDER BY invoice_date DESC
@@ -102,15 +111,24 @@ def client_card_page(client_id: str):
     # === Aging buckets ===
 
     aging_df = df.copy()
-    aging_df["aging_bucket"] = aging_df["days_overdue_real"].apply(aging_bucket)
+    aging_df["aging_bucket"] = aging_df.apply(aging_bucket, axis=1)
 
-    bucket_order = ["Не просрочено", "1–7 дней", "8–30 дней", "31+ дней"]
+    bucket_order = [
+        "Не просрочено",
+        "К оплате в ближайшие дни",
+        "К оплате сегодня",
+        "1–7 дней",
+        "8–30 дней",
+        "31+ дней",
+    ]
 
     bucket_colors = {
-        "Не просрочено": "#22c55e",   # green
-        "1–7 дней": "#f59e0b",        # amber
-        "8–30 дней": "#f97316",       # orange
-        "31+ дней": "#ef4444",        # red
+        "Не просрочено": "#22c55e",
+        "К оплате в ближайшие дни": "#fde68a",
+        "К оплате сегодня": "#f59e0b",
+        "1–7 дней": "#fb923c",
+        "8–30 дней": "#f97316",
+        "31+ дней": "#ef4444",
     }
 
     aging_summary = (
@@ -165,7 +183,7 @@ def client_card_page(client_id: str):
 
         dff["invoice_amount_fmt"] = dff["invoice_amount"].apply(money)
         dff["is_overdue_fmt"] = dff["is_overdue_real"].map({True: "Да", False: "Нет"})
-        dff["aging_bucket"] = dff["days_overdue_real"].apply(aging_bucket)
+        dff["aging_bucket"] = dff.apply(aging_bucket, axis=1)
 
         return dff.to_dict("records")
 
@@ -188,12 +206,20 @@ def client_card_page(client_id: str):
         "body",
         """
         <q-tr :props="props"
-            :class="props.row.is_overdue_real ? 'bg-red-100' : props.row.is_due_today ? 'bg-orange-100' : ''">
+            :class="
+                props.row.is_overdue_real
+                    ? 'bg-red-100'
+                    : props.row.is_due_today
+                        ? 'bg-orange-100'
+                        : props.row.is_due_in_3_days
+                            ? 'bg-yellow-100'
+                            : ''
+            ">
             <q-td v-for="col in props.cols" :key="col.name" :props="props">
-            {{ col.value }}
+                {{ col.value }}
             </q-td>
         </q-tr>
-    """
+        """
     )
 
     def refresh():
