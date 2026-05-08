@@ -11,6 +11,7 @@ from src.app.pages.overdue import overdue_page
 from src.app.pages.client_card import client_card_page
 from src.app.pages.forecast import due_today_page
 from src.app.pages.parent_org_card import parent_org_card_page
+from src.app.components.aging_bar import receivables_structure_bar
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -188,6 +189,22 @@ def dashboard():
                 )
 
         kpi_card("Высокий риск", str(kpi.high_risk_client_count), "клиентов в красной зоне")
+
+    normal_debt = (
+        float(kpi.total_debt)
+        - float(kpi.overdue_debt)
+        - float(kpi.due_today)
+        - total_due_soon
+    )
+
+    normal_debt = max(normal_debt, 0)
+
+    receivables_structure_bar(
+        normal_amount=normal_debt,
+        due_soon_amount=total_due_soon,
+        due_today_amount=float(kpi.due_today),
+        overdue_amount=float(kpi.overdue_debt),
+    )
 
     ui.separator().classes("my-4")
 
