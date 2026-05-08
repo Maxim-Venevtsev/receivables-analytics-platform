@@ -1,23 +1,33 @@
 # environment
 .env
 .venv/
+venv/
 
-# runtime data
+# runtime / sensitive data
 data/raw/*
 data/staging/*
 data/marts/*
 data/logs/*
 
-# keep folder structure
+# keep runtime folder structure
 !data/raw/.gitkeep
 !data/staging/.gitkeep
 !data/marts/.gitkeep
 !data/logs/.gitkeep
 
+# demo dataset: allowed for GitHub
+!data/demo/
+!data/demo/**
+
 # python
 __pycache__/
 *.pyc
+*.pyo
 .pytest_cache/
+
+# IDE / editor
+.vscode/
+.idea/
 
 # system
 .DS_Store

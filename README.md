@@ -282,3 +282,11 @@ scheduled ETL
 backup strategy
 deployment automation
 user management
+
+
+## Demo dataset
+
+Sanitized demo datasets can be generated from normalized PostgreSQL views using:
+
+```bash
+python tools/export_demo_dataset.py
