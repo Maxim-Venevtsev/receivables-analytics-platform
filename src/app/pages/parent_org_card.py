@@ -65,88 +65,51 @@ def aging_bucket(row) -> str:
 @ui.page("/parent-org/{parent_org_id}")
 def parent_org_card_page(parent_org_id: str, request: Request):
     source_client_id = request.query_params.get("client_id")
+    back_target = f"/client/{source_client_id}?from=dashboard" if source_client_id else "/"
 
-    back_target = (
-        f"/client/{source_client_id}?from=dashboard"
-        if source_client_id
-        else "/"
-    )
+    summary = query_df("""
+        SELECT *
+        FROM core.v_parent_org_summary
+        WHERE parent_org_id = :parent_org_id
+    """, {"parent_org_id": parent_org_id})
 
-    df = query_df("""
-        SELECT
-            parent_org_id,
-            client_id,
-            client_name,
-            client_group,
-            invoice_date,
-            due_date,
-            invoice_amount,
-            days_overdue_real,
-            is_overdue_real,
-            is_due_today,
-            is_due_in_3_days
-        FROM core.receivables_snapshot_fact
+    clients = query_df("""
+        SELECT *
+        FROM core.v_parent_org_clients
+        WHERE parent_org_id = :parent_org_id
+        ORDER BY overdue_debt DESC, total_debt DESC
+    """, {"parent_org_id": parent_org_id})
+
+    invoices = query_df("""
+        SELECT *
+        FROM core.v_parent_org_invoices
         WHERE parent_org_id = :parent_org_id
         ORDER BY client_group, client_name, due_date
     """, {"parent_org_id": parent_org_id})
 
-    if df.empty:
-        ui.label(f"Карточка вышестоящей: {parent_org_id}").classes("text-3xl font-bold mb-2")
-        top_navigation()
-        ui.label("Нет данных по этой вышестоящей организации.").classes("text-lg text-red-700")
-        return
-
-    for col in ["invoice_amount", "days_overdue_real"]:
-        df[col] = df[col].astype(float)
-
-    df["due_today_amount"] = df.apply(
-        lambda row: row["invoice_amount"] if row["is_due_today"] else 0,
-        axis=1,
-    )
-
-    df["due_soon_only_amount"] = df.apply(
-        lambda row: row["invoice_amount"]
-        if row["is_due_in_3_days"] and not row["is_due_today"]
-        else 0,
-        axis=1,
-    )
-
-    df["overdue_amount"] = df.apply(
-        lambda row: row["invoice_amount"] if row["is_overdue_real"] else 0,
-        axis=1,
-    )
-
-    selected_branches: list[str] = []
-
     ui.label(f"Карточка вышестоящей: {parent_org_id}").classes("text-3xl font-bold mb-2")
     top_navigation()
+
+    if summary.empty or invoices.empty:
+        ui.label("Нет данных по этой вышестоящей организации.").classes("text-lg text-red-700")
+        return
 
     with ui.row().classes("mb-4"):
         ui.button("← Назад", on_click=lambda: ui.navigate.to(back_target)).props("flat color=primary")
 
-    def filtered_df() -> pd.DataFrame:
-        result = df.copy()
-        if selected_branches:
-            result = result[result["client_group"].isin(selected_branches)]
-        return result
-
-    total_debt = df["invoice_amount"].sum()
-    due_today = df["due_today_amount"].sum()
-    due_soon = df["due_soon_only_amount"].sum()
-    overdue_debt = df["overdue_amount"].sum()
-    org_count = df["client_id"].nunique()
-    overdue_pct = overdue_debt / total_debt * 100 if total_debt else 0
+    s = summary.iloc[0]
+    selected_branches: list[str] = []
 
     with ui.row().classes("gap-4 mb-6"):
-        kpi_card("Общий долг", money(total_debt))
-        kpi_card("К оплате сегодня", money(due_today))
-        kpi_card("К оплате в ближайшие дни", money(due_soon))
-        kpi_card("Просрочено", money(overdue_debt), f"{percent(overdue_pct)} от общего долга")
-        kpi_card("Количество организаций", str(org_count))
+        kpi_card("Общий долг", money(s.total_debt))
+        kpi_card("К оплате сегодня", money(s.due_today))
+        kpi_card("К оплате в ближайшие дни", money(s.due_soon_only))
+        kpi_card("Просрочено", money(s.overdue_debt), f"{percent(s.overdue_share_pct)} от общего долга")
+        kpi_card("Количество организаций", str(int(s.client_count)))
 
-    # === Aging / payment timing distribution ===
+    # === Aging ===
 
-    aging_df = df.copy()
+    aging_df = invoices.copy()
     aging_df["aging_bucket"] = aging_df.apply(aging_bucket, axis=1)
 
     bucket_order = [
@@ -179,6 +142,7 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         .fillna({"amount": 0})
     )
 
+    total_debt = float(s.total_debt)
     aging_summary["share"] = aging_summary["amount"] / total_debt * 100 if total_debt else 0
     aging_summary["amount_fmt"] = aging_summary["amount"].apply(money)
     aging_summary["share_fmt"] = aging_summary["share"].apply(percent)
@@ -188,51 +152,36 @@ def parent_org_card_page(parent_org_id: str, request: Request):
 
         for _, row in aging_summary.iterrows():
             bucket = row["aging_bucket"]
-            amount_fmt = row["amount_fmt"]
-            share_fmt = row["share_fmt"]
             width = max(float(row["share"]), 1) if float(row["amount"]) > 0 else 0
-            color = bucket_colors[bucket]
 
             with ui.row().classes("w-full items-center gap-4 mb-2"):
                 ui.label(bucket).classes("w-40 text-sm")
 
                 with ui.element("div").classes("flex-1 bg-gray-100 rounded-full h-5 overflow-hidden"):
                     ui.element("div").classes("h-5 rounded-full").style(
-                        f"width: {width}%; background-color: {color};"
+                        f"width: {width}%; background-color: {bucket_colors[bucket]};"
                     )
 
-                ui.label(f"{amount_fmt} · {share_fmt}").classes("w-40 text-right text-sm text-gray-600")
+                ui.label(f"{row['amount_fmt']} · {row['share_fmt']}").classes(
+                    "w-40 text-right text-sm text-gray-600"
+                )
 
     # === Контрагенты ===
 
-    contractors = (
-        df.groupby(["client_group", "client_id", "client_name"], as_index=False)
-        .agg(
-            total_debt=("invoice_amount", "sum"),
-            due_today=("due_today_amount", "sum"),
-            due_soon_only=("due_soon_only_amount", "sum"),
-            overdue_debt=("overdue_amount", "sum"),
-        )
-    )
-
-    contractors["overdue_share_pct"] = (
-        contractors["overdue_debt"] / contractors["total_debt"] * 100
-    ).fillna(0)
-
-    def prepare_contractor_rows():
-        result = contractors.copy()
+    def prepare_client_rows():
+        df = clients.copy()
 
         if selected_branches:
-            result = result[result["client_group"].isin(selected_branches)]
+            df = df[df["client_group"].isin(selected_branches)]
 
-        result["total_debt_fmt"] = result["total_debt"].apply(money)
-        result["due_today_fmt"] = result["due_today"].apply(money)
-        result["due_soon_only_fmt"] = result["due_soon_only"].apply(money)
-        result["overdue_debt_fmt"] = result["overdue_debt"].apply(money)
-        result["overdue_share_fmt"] = result["overdue_share_pct"].apply(percent)
-        result["rating_placeholder"] = "—"
+        df["total_debt_fmt"] = df["total_debt"].apply(money)
+        df["due_today_fmt"] = df["due_today"].apply(money)
+        df["due_soon_only_fmt"] = df["due_soon_only"].apply(money)
+        df["overdue_debt_fmt"] = df["overdue_debt"].apply(money)
+        df["overdue_share_fmt"] = df["overdue_share_pct"].apply(percent)
+        df["rating_placeholder"] = "—"
 
-        return result.to_dict("records")
+        return df.to_dict("records")
 
     with ui.row().classes("items-center gap-4"):
         selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
@@ -240,7 +189,7 @@ def parent_org_card_page(parent_org_id: str, request: Request):
 
     ui.label("Контрагенты").classes("text-xl mt-6")
 
-    contractor_table = ui.table(
+    clients_table = ui.table(
         columns=[
             {"name": "client_group", "label": "Филиал", "field": "client_group", "sortable": True},
             {"name": "client_id", "label": "Код клиента", "field": "client_id", "sortable": True},
@@ -252,35 +201,26 @@ def parent_org_card_page(parent_org_id: str, request: Request):
             {"name": "overdue_share_pct", "label": "% просрочки", "field": "overdue_share_pct", "align": "right", "sortable": True},
             {"name": "rating_placeholder", "label": "Рейтинг", "field": "rating_placeholder", "align": "center"},
         ],
-        rows=prepare_contractor_rows(),
+        rows=prepare_client_rows(),
     ).classes("w-full")
 
-    contractor_table.add_slot(
+    clients_table.add_slot(
         "body-cell-client_group",
         """
         <q-td :props="props">
-            <q-btn
-                flat
-                dense
-                color="primary"
-                :label="props.row.client_group"
-                @click="$parent.$emit('branch_click', props.row.client_group)"
-            />
+            <q-btn flat dense color="primary" :label="props.row.client_group"
+                   @click="$parent.$emit('branch_click', props.row.client_group)" />
         </q-td>
         """,
     )
 
-    contractor_table.add_slot(
+    clients_table.add_slot(
         "body-cell-client_name",
         """
         <q-td :props="props">
-            <q-btn
-                flat
-                dense
-                color="primary"
-                :label="props.row.client_name"
-                @click="$parent.$emit('client_click', props.row.client_id)"
-            />
+            <q-btn flat dense color="primary"
+                   :label="props.row.client_id + ' · ' + props.row.client_name"
+                   @click="$parent.$emit('client_click', props.row.client_id)" />
         </q-td>
         """,
     )
@@ -291,7 +231,7 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         ("due_soon_only", "due_soon_only_fmt"),
         ("overdue_debt", "overdue_debt_fmt"),
     ]:
-        contractor_table.add_slot(
+        clients_table.add_slot(
             f"body-cell-{column_name}",
             f"""
             <q-td :props="props" class="text-right">
@@ -300,7 +240,7 @@ def parent_org_card_page(parent_org_id: str, request: Request):
             """,
         )
 
-    contractor_table.add_slot(
+    clients_table.add_slot(
         "body-cell-overdue_share_pct",
         """
         <q-td :props="props">
@@ -315,13 +255,16 @@ def parent_org_card_page(parent_org_id: str, request: Request):
     # === Накладные ===
 
     def prepare_invoice_rows():
-        result = filtered_df().copy()
+        df = invoices.copy()
 
-        result["invoice_amount_fmt"] = result["invoice_amount"].apply(money)
-        result["is_overdue_fmt"] = result["is_overdue_real"].map({True: "Да", False: "Нет"})
-        result["aging_bucket"] = result.apply(aging_bucket, axis=1)
+        if selected_branches:
+            df = df[df["client_group"].isin(selected_branches)]
 
-        return result.to_dict("records")
+        df["invoice_amount_fmt"] = df["invoice_amount"].apply(money)
+        df["is_overdue_fmt"] = df["is_overdue_real"].map({True: "Да", False: "Нет"})
+        df["aging_bucket"] = df.apply(aging_bucket, axis=1)
+
+        return df.to_dict("records")
 
     ui.label("Накладные").classes("text-xl mt-6")
 
@@ -359,7 +302,7 @@ def parent_org_card_page(parent_org_id: str, request: Request):
                         flat
                         dense
                         color="primary"
-                        :label="props.row.client_name"
+                        :label="props.row.client_id + ' · ' + props.row.client_name"
                         @click="$parent.$emit('client_click', props.row.client_id)"
                     />
                 </template>
@@ -379,8 +322,8 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         )
         selected_branch_label.update()
 
-        contractor_table.rows = prepare_contractor_rows()
-        contractor_table.update()
+        clients_table.rows = prepare_client_rows()
+        clients_table.update()
 
         invoice_table.rows = prepare_invoice_rows()
         invoice_table.update()
@@ -397,6 +340,6 @@ def parent_org_card_page(parent_org_id: str, request: Request):
     def open_client(event):
         ui.navigate.to(f"/client/{event.args}?from=parent-org&parent_org_id={parent_org_id}")
 
-    contractor_table.on("branch_click", select_branch)
-    contractor_table.on("client_click", open_client)
+    clients_table.on("branch_click", select_branch)
+    clients_table.on("client_click", open_client)
     invoice_table.on("client_click", open_client)

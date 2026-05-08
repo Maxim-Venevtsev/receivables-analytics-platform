@@ -309,3 +309,91 @@ SELECT
     ) AS clients_with_debt_increase
 
 FROM core.v_dashboard_kpi k;
+
+
+
+DROP VIEW IF EXISTS core.v_parent_org_invoices;
+
+CREATE OR REPLACE VIEW core.v_parent_org_invoices AS
+SELECT
+    parent_org_id,
+    client_id,
+    client_name,
+    client_group,
+
+    invoice_date,
+    due_date,
+    invoice_amount,
+
+    days_overdue_real,
+    days_until_due_real,
+
+    is_overdue_real,
+    is_due_today,
+    is_due_in_3_days,
+    is_due_in_7_days,
+
+    CASE WHEN is_overdue_real THEN invoice_amount ELSE 0 END AS overdue_amount,
+    CASE WHEN is_due_today THEN invoice_amount ELSE 0 END AS due_today_amount,
+    CASE
+        WHEN is_due_in_3_days AND NOT is_due_today
+        THEN invoice_amount
+        ELSE 0
+    END AS due_soon_only_amount
+
+FROM core.v_invoice_detail;
+
+
+DROP VIEW IF EXISTS core.v_parent_org_clients;
+
+CREATE OR REPLACE VIEW core.v_parent_org_clients AS
+SELECT
+    parent_org_id,
+    client_group,
+    client_id,
+    client_name,
+
+    COUNT(*) AS invoice_count,
+    SUM(invoice_amount) AS total_debt,
+    SUM(due_today_amount) AS due_today,
+    SUM(due_soon_only_amount) AS due_soon_only,
+    SUM(overdue_amount) AS overdue_debt,
+
+    ROUND(
+        SUM(overdue_amount) / NULLIF(SUM(invoice_amount), 0) * 100,
+        2
+    ) AS overdue_share_pct,
+
+    MAX(days_overdue_real) AS max_days_overdue
+
+FROM core.v_parent_org_invoices
+GROUP BY
+    parent_org_id,
+    client_group,
+    client_id,
+    client_name;
+
+
+DROP VIEW IF EXISTS core.v_parent_org_summary;
+
+CREATE OR REPLACE VIEW core.v_parent_org_summary AS
+SELECT
+    parent_org_id,
+
+    COUNT(DISTINCT client_id) AS client_count,
+    COUNT(*) AS invoice_count,
+
+    SUM(invoice_amount) AS total_debt,
+    SUM(due_today_amount) AS due_today,
+    SUM(due_soon_only_amount) AS due_soon_only,
+    SUM(overdue_amount) AS overdue_debt,
+
+    ROUND(
+        SUM(overdue_amount) / NULLIF(SUM(invoice_amount), 0) * 100,
+        2
+    ) AS overdue_share_pct,
+
+    MAX(days_overdue_real) AS max_days_overdue
+
+FROM core.v_parent_org_invoices
+GROUP BY parent_org_id;
