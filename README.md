@@ -1,117 +1,237 @@
 # ARS Debt Management BI
 
-Production-style data pipeline and dashboard for receivables management.
+Operational BI system for accounts receivable control.
+
+Production-style analytical pipeline and interactive dashboard for monitoring receivables, overdue debt, payment discipline, and operational collection priorities.
 
 ---
 
-## 🚀 What problem it solves
+# 🚀 Business problem
 
-This project transforms raw receivables reports into a structured analytical system:
+Traditional receivables management often relies on static Excel reports and manual control.
 
-- Full visibility of accounts receivable
-- Identification of overdue debt
-- Prioritization of collection actions
-- Drill-down to invoice level
-- Aging analysis (0–7 / 7–30 / 30+ days)
-- Daily snapshot tracking for trend analysis
+This project transforms raw ERP exports into a structured analytical platform with:
 
----
-
-## 🧠 Key idea
-
-Instead of working with static Excel reports:
-
-➡️ We build a **data pipeline + analytical layer + interactive UI**
-
-
-TXT / Excel → Python ingestion → PostgreSQL → Analytical Views → NiceGUI Dashboard
-
+- operational monitoring
+- drill-down analytics
+- debt prioritization
+- overdue control
+- upcoming payment visibility
+- historical tracking
+- parent organization aggregation
 
 ---
 
-## ⚙️ Architecture
+# 🧠 Core idea
 
-### Data ingestion
+Instead of working with disconnected reports:
+
+TXT / Excel → Python ingestion → PostgreSQL → Analytical SQL Views → Interactive NiceGUI Dashboard
+
+The system provides both:
+- operational daily control
+- analytical historical visibility
+
+---
+
+# ⚙️ Architecture
+
+## Data ingestion
 - Source: Axapta-generated TXT / Excel reports
-- Parsing and normalization via Python
-- Validation layer (data quality checks)
+- Python parsing and normalization
+- Validation and transformation layer
 - Snapshot-based storage
 
-### Storage
+## Storage
 - PostgreSQL database
-- Fact table: receivables snapshot
-- Historical accumulation (daily snapshots)
+- Daily historical snapshots
+- Fact-based storage model
 
-### Analytics layer
-- SQL views:
-  - `v_dashboard_overview`
-  - `v_branch_summary`
-  - `v_client_priority`
-  - `v_client_deltas`
+## Analytics layer
+SQL analytical views:
 
-### Frontend
-- NiceGUI (Python-based UI)
-- Fully interactive dashboard
+- `v_dashboard_overview`
+- `v_branch_summary`
+- `v_client_priority`
+- `v_client_deltas`
+- `v_parent_org_summary`
+- `v_parent_org_clients`
+- `v_parent_org_invoices`
+
+## Frontend
+- NiceGUI
+- Interactive operational dashboard
 - Drill-down navigation
+- Clickable analytical workflow
 
 ---
 
-## 📊 Features
+# 📊 Implemented features
 
-### Dashboard
+---
+
+## Dashboard
+
+Main operational overview:
+
 - Total debt
-- Overdue debt (% included)
 - Due today
+- Due in next 3 days
+- Overdue debt
 - High-risk clients
-- Branch-level breakdown
-- Clickable filtering
+- Receivables structure visualization
+- Branch-level monitoring
+- Interactive filtering
 
-### Overdue page
-- Focus on problematic clients
-- Action recommendations:
+### Receivables structure visualization
+
+Operational debt distribution:
+
+- normal
+- due in next 3 days
+- due today
+- overdue
+
+Designed for fast visual assessment of collection urgency.
+
+---
+
+## Overdue page
+
+Focused operational view for problematic receivables.
+
+Features:
+
+- overdue-only client prioritization
+- risk segmentation
+- action recommendations:
   - CALL NOW
   - CONTROL TODAY
   - REMIND
   - MONITOR
-
-### Client card (PRO level)
-- Client profile (name, group, parent org)
-- KPI summary
-- Aging structure visualization
-- Invoice-level drill-down
-- Overdue highlighting
+- clickable drill-down to client level
 
 ---
 
-## 📈 Aging analysis
+## Due today page
 
-Each client is analyzed by overdue buckets:
+Operational control of payments expected today.
+
+Features:
+
+- clients requiring attention today
+- due-today aggregation
+- upcoming payments visibility
+- branch filtering
+- risk visibility
+
+---
+
+## Due soon page
+
+Forward-looking operational monitoring.
+
+Features:
+
+- payments due within next 3 days
+- early risk visibility
+- proactive collection prioritization
+- operational workload planning
+
+---
+
+## Dynamics page
+
+Historical delta analysis.
+
+Features:
+
+- debt increase/decrease monitoring
+- client-level debt changes
+- branch filtering
+- sorting and search
+- operational change tracking
+
+---
+
+# 👤 Client card
+
+PRO-level operational client profile.
+
+Features:
+
+- client summary
+- parent organization reference
+- branch reference
+- KPI cards
+- aging structure visualization
+- invoice-level drill-down
+- overdue highlighting
+- due-today highlighting
+- upcoming-payment highlighting
+
+Invoice-level details:
+
+- invoice date
+- order number
+- printable invoice number
+- analytics type
+- due date
+- overdue days
+- payment urgency bucket
+
+---
+
+# 🏢 Parent organization card
+
+Aggregated monitoring for related legal entities inside one parent structure.
+
+Features:
+
+- consolidated debt overview
+- cross-client risk visibility
+- branch-level filtering
+- organization-level KPI aggregation
+- consolidated aging analysis
+- consolidated invoice drill-down
+
+This layer models real-world enterprise receivables workflows.
+
+---
+
+# 🔄 Navigation workflow
+
+Dashboard
+    ↓
+Overdue / Due Today / Due Soon / Dynamics
+    ↓
+Client Card
+    ↓
+Parent Organization Card
+    ↓
+Invoice-level drill-down
+
+---
+
+# 📈 Aging analysis
+
+Debt is segmented into operational buckets:
 
 - Not overdue
-- 1–7 days
-- 8–30 days
-- 31+ days
+- Due in next 3 days
+- Due today
+- 1–7 overdue days
+- 8–30 overdue days
+- 31+ overdue days
 
-With:
-- Amount
-- Share of total debt
-- Visual distribution
-
----
-
-## 🔮 Future roadmap
-
-See: `docs/FUTURE_ROADMAP.md`
-
-Planned features:
-- Client payment discipline rating
-- Parent organization analytics
-- Cash flow forecasting
-- CRM-like action tracking
+Used for:
+- operational prioritization
+- risk visualization
+- collection management
 
 ---
 
-## 🛠️ Tech stack
+# 🛠️ Tech stack
 
 - Python 3.13
 - pandas
@@ -121,11 +241,44 @@ Planned features:
 
 ---
 
-## ▶️ How to run
+# ▶️ How to run
 
 ```bash
 python -m src.app.main
 
 Open:
-
 http://localhost:8080
+
+
+🔮 Future roadmap
+
+See:
+
+docs/FUTURE_ROADMAP.md
+
+Planned features include:
+
+payment discipline rating
+behavioral risk analytics
+branch cards
+trend visualization
+credit limit monitoring
+CRM-like collection workflow
+multi-currency support
+forecasting models
+⚠️ Current status
+
+Current version is an operational MVP intended for:
+
+controlled demo
+workflow validation
+business feedback
+architecture demonstration
+
+Production hardening still planned:
+
+authentication
+scheduled ETL
+backup strategy
+deployment automation
+user management
