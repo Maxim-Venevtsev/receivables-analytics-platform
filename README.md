@@ -245,48 +245,60 @@ Used for:
 
 ```bash
 python -m src.app.main
+```
 
-Open:
+Open in browser:
+
+```text
 http://localhost:8080
+```
 
+---
 
-🔮 Future roadmap
+# 🔮 Future roadmap
 
 See:
 
+```text
 docs/FUTURE_ROADMAP.md
+```
 
 Planned features include:
 
-payment discipline rating
-behavioral risk analytics
-branch cards
-trend visualization
-credit limit monitoring
-CRM-like collection workflow
-multi-currency support
-forecasting models
-⚠️ Current status
+- payment discipline rating
+- behavioral risk analytics
+- branch cards
+- trend visualization
+- credit limit monitoring
+- CRM-like collection workflow
+- multi-currency support
+- forecasting models
+
+---
+
+# ⚠️ Current status
 
 Current version is an operational MVP intended for:
 
-controlled demo
-workflow validation
-business feedback
-architecture demonstration
+- controlled demo
+- workflow validation
+- business feedback
+- architecture demonstration
 
 Production hardening still planned:
 
-authentication
-scheduled ETL
-backup strategy
-deployment automation
-user management
+- authentication
+- scheduled ETL
+- backup strategy
+- deployment automation
+- user management
 
+---
 
-## Demo dataset
+# 🧪 Demo dataset
 
 Sanitized demo datasets can be generated from normalized PostgreSQL views using:
 
 ```bash
 python tools/export_demo_dataset.py
+```
