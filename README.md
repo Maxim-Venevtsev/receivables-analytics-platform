@@ -13,6 +13,12 @@ Demo data is fully anonymized and generated for demonstration purposes.
 
 ---
 
+## Operational Dashboard
+
+![Operational Dashboard](docs/images/dashboard_overview.jpg)
+
+---
+
 # 🚀 Business problem
 
 Traditional receivables management often relies on static Excel reports and manual control.
