@@ -329,6 +329,8 @@ Key engineering tasks included:
 - configuring Nginx + HTTPS + systemd service
 - optimizing UI for both desktop and mobile devices
 
+---
+
 # ▶️ How to run
 
 ```bash
