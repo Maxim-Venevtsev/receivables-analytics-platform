@@ -85,6 +85,14 @@ SQL analytical views:
 
 ## Dashboard
 
+![Operational Dashboard](docs/images/dashboard_overview.jpg)
+
+---
+
+![Operational Queue](docs/images/operational_queue.jpg)
+
+---
+
 Main operational overview:
 
 - Total debt
@@ -110,6 +118,10 @@ Designed for fast visual assessment of collection urgency.
 ---
 
 ## Overdue page
+
+![Overdue monitoring](docs/images/overdue_monitoring.jpg)
+
+---
 
 Focused operational view for problematic receivables.
 
@@ -142,6 +154,10 @@ Features:
 
 ## Due soon page
 
+![Payments that are due soon](docs/images/due_soon.jpg)
+
+---
+
 Forward-looking operational monitoring.
 
 Features:
@@ -168,6 +184,10 @@ Features:
 ---
 
 # 👤 Client card
+
+![Client card](docs/images/client_card.jpg)
+
+---
 
 PRO-level operational client profile.
 
@@ -196,6 +216,10 @@ Invoice-level details:
 ---
 
 # 🏢 Parent organization card
+
+![Parent organization card](docs/images/parent_org_card.jpg)
+
+---
 
 Aggregated monitoring for related legal entities inside one parent structure.
 
