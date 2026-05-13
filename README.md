@@ -4,10 +4,10 @@ Operational BI system for accounts receivable control.
 
 Production-style analytical pipeline and interactive dashboard for monitoring receivables, overdue debt, payment discipline, and operational collection priorities built with:
 
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue) PostgreSQL
-![Python](https://img.shields.io/badge/Python-3.13-blue) Python
-![SQL](https://img.shields.io/badge/SQL-analytics-orange) SQL analytical views
-![NiceGUI](https://img.shields.io/badge/NiceGUI-dashboard-green) NiceGUI
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
+![Python](https://img.shields.io/badge/Python-3.13-blue)
+![SQL](https://img.shields.io/badge/SQL-analytics-orange)
+![NiceGUI](https://img.shields.io/badge/NiceGUI-dashboard-green)
 
 ---
 
@@ -53,15 +53,14 @@ The system provides both:
 
 ### Data flow
 
-ERP Export (TXT/XLS)
-        ↓
-Python ingestion pipeline
-        ↓
-PostgreSQL warehouse
-        ↓
-SQL analytical views
-        ↓
-NiceGUI dashboards
+```mermaid
+flowchart TD
+    A[ERP Export TXT/XLS]
+    --> B[Python Ingestion Pipeline]
+    --> C[PostgreSQL Warehouse]
+    --> D[SQL Analytical Views]
+    --> E[NiceGUI Dashboards]
+```
 
 ---
 
