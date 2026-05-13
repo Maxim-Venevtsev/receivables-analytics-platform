@@ -11,11 +11,19 @@ Production-style analytical pipeline and interactive dashboard for monitoring re
 
 ---
 
-## Live Demo
+## Stack
 
-https://demo.maximvenevtsev.com
+- Python 3.13
+- PostgreSQL 16
+- SQL analytical views
+- NiceGUI
+- VPS deployment (Nginx + systemd)
+- Responsive UI
 
-Demo data is fully anonymized and generated for demonstration purposes.
+---
+
+### 🚀 Live Demo
+[Open demo environment](https://demo.maximvenevtsev.com)
 
 ---
 
@@ -306,15 +314,20 @@ Used for:
 
 ---
 
-# 🛠️ Tech stack
+# ⚙️ Engineering Challenges
 
-- Python 3.13
-- pandas
-- SQLAlchemy
-- PostgreSQL
-- NiceGUI
+This project was designed not as a static dashboard, but as a production-style operational analytics platform.
 
----
+Key engineering tasks included:
+
+- parsing and normalizing inconsistent ERP TXT/XLS exports
+- building reusable PostgreSQL analytical views
+- implementing hierarchical parent-organization aggregation
+- creating drill-down analytical workflows
+- separating operational and analytical logic
+- deploying a production-like demo environment on VPS
+- configuring Nginx + HTTPS + systemd service
+- optimizing UI for both desktop and mobile devices
 
 # ▶️ How to run
 
