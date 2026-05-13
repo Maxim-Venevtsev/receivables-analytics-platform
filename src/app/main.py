@@ -150,7 +150,9 @@ def dashboard():
     total_due_today = priority["due_today"].sum()
     total_due_soon = priority["due_soon_only"].sum()
 
-    ui.label("АРС — Дебиторка").classes("text-3xl font-bold mb-2")
+    ui.label("АВС — Дебиторка").classes("text-3xl font-bold mb-2")
+    ui.label("Operational Receivables Monitoring Platform") \
+        .classes("text-subtitle1 text-grey-7 mb-4")
 
     with ui.row().classes("mb-4"):
         ui.button("📊 Главная", on_click=lambda: ui.navigate.to("/")).props("flat color=primary")
