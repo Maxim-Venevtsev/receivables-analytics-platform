@@ -1,14 +1,20 @@
-# ARS Debt Management BI
+# ABC Debt Management BI
 
 Operational BI system for accounts receivable control.
 
-Production-style analytical pipeline and interactive dashboard for monitoring receivables, overdue debt, payment discipline, and operational collection priorities.
+Production-style analytical pipeline and interactive dashboard for monitoring receivables, overdue debt, payment discipline, and operational collection priorities built with:
+
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue) PostgreSQL
+![Python](https://img.shields.io/badge/Python-3.13-blue) Python
+![SQL](https://img.shields.io/badge/SQL-analytics-orange) SQL analytical views
+![NiceGUI](https://img.shields.io/badge/NiceGUI-dashboard-green) NiceGUI
 
 ---
 
 ## Live Demo
 
 https://demo.maximvenevtsev.com
+
 Demo data is fully anonymized and generated for demonstration purposes.
 
 ---
@@ -45,6 +51,18 @@ The system provides both:
 - operational daily control
 - analytical historical visibility
 
+### Data flow
+
+ERP Export (TXT/XLS)
+        ↓
+Python ingestion pipeline
+        ↓
+PostgreSQL warehouse
+        ↓
+SQL analytical views
+        ↓
+NiceGUI dashboards
+
 ---
 
 # ⚙️ Architecture
@@ -76,6 +94,19 @@ SQL analytical views:
 - Interactive operational dashboard
 - Drill-down navigation
 - Clickable analytical workflow
+
+---
+
+## Key Features
+
+- overdue monitoring
+- due-soon payment control
+- drill-down client analytics
+- parent organization aggregation
+- operational prioritization
+- risk segmentation
+- mobile-friendly UI
+- PostgreSQL analytical views
 
 ---
 
@@ -140,6 +171,10 @@ Features:
 
 ## Due today page
 
+![Payments due today](docs/images/due_today.jpg)
+
+---
+
 Operational control of payments expected today.
 
 Features:
@@ -170,6 +205,10 @@ Features:
 ---
 
 ## Dynamics page
+
+![Dynamics](docs/images/dynamics.jpg)
+
+---
 
 Historical delta analysis.
 
