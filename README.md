@@ -6,6 +6,13 @@ Production-style analytical pipeline and interactive dashboard for monitoring re
 
 ---
 
+## Live Demo
+
+https://demo.maximvenevtsev.com
+Demo data is fully anonymized and generated for demonstration purposes.
+
+---
+
 # 🚀 Business problem
 
 Traditional receivables management often relies on static Excel reports and manual control.
