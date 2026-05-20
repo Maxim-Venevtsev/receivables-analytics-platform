@@ -87,7 +87,7 @@ def client_card_page(client_id: str, request: Request):
             is_overdue_real,
             is_due_today,
             is_due_in_3_days
-        FROM core.receivables_snapshot_fact
+        FROM core.v_invoice_detail
         WHERE client_id = :client_id
         ORDER BY invoice_date DESC
     """, {"client_id": client_id})

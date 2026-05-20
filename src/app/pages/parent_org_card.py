@@ -67,25 +67,82 @@ def parent_org_card_page(parent_org_id: str, request: Request):
     source_client_id = request.query_params.get("client_id")
     back_target = f"/client/{source_client_id}?from=dashboard" if source_client_id else "/"
 
-    summary = query_df("""
-        SELECT *
-        FROM core.v_parent_org_summary
-        WHERE parent_org_id = :parent_org_id
-    """, {"parent_org_id": parent_org_id})
-
-    clients = query_df("""
-        SELECT *
-        FROM core.v_parent_org_clients
-        WHERE parent_org_id = :parent_org_id
-        ORDER BY overdue_debt DESC, total_debt DESC
-    """, {"parent_org_id": parent_org_id})
-
     invoices = query_df("""
-        SELECT *
-        FROM core.v_parent_org_invoices
+        SELECT
+            parent_org_id,
+            client_id,
+            client_name,
+            client_group,
+
+            invoice_date,
+            due_date,
+            invoice_amount,
+
+            days_overdue_real,
+            days_until_due_real,
+
+            is_overdue_real,
+            is_due_today,
+            is_due_in_3_days,
+            is_due_in_7_days,
+
+            CASE WHEN is_overdue_real THEN invoice_amount ELSE 0 END AS overdue_amount,
+            CASE WHEN is_due_today THEN invoice_amount ELSE 0 END AS due_today_amount,
+            CASE
+                WHEN is_due_in_3_days AND NOT is_due_today
+                THEN invoice_amount
+                ELSE 0
+            END AS due_soon_only_amount
+        FROM core.v_invoice_detail
         WHERE parent_org_id = :parent_org_id
         ORDER BY client_group, client_name, due_date
     """, {"parent_org_id": parent_org_id})
+
+    if invoices.empty:
+        ui.label(f"Карточка вышестоящей: {parent_org_id}").classes("text-3xl font-bold mb-2")
+        top_navigation()
+        ui.label("Нет данных по этой вышестоящей организации.").classes("text-lg text-red-700")
+        return
+
+    summary = (
+        invoices
+        .groupby("parent_org_id", as_index=False)
+        .agg(
+            client_count=("client_id", "nunique"),
+            invoice_count=("invoice_amount", "count"),
+            total_debt=("invoice_amount", "sum"),
+            due_today=("due_today_amount", "sum"),
+            due_soon_only=("due_soon_only_amount", "sum"),
+            overdue_debt=("overdue_amount", "sum"),
+            max_days_overdue=("days_overdue_real", "max"),
+        )
+    )
+
+    summary["overdue_share_pct"] = (
+        summary["overdue_debt"] / summary["total_debt"] * 100
+    ).fillna(0)
+
+    clients = (
+        invoices
+        .groupby(["parent_org_id", "client_group", "client_id", "client_name"], as_index=False)
+        .agg(
+            invoice_count=("invoice_amount", "count"),
+            total_debt=("invoice_amount", "sum"),
+            due_today=("due_today_amount", "sum"),
+            due_soon_only=("due_soon_only_amount", "sum"),
+            overdue_debt=("overdue_amount", "sum"),
+            max_days_overdue=("days_overdue_real", "max"),
+        )
+    )
+
+    clients["overdue_share_pct"] = (
+        clients["overdue_debt"] / clients["total_debt"] * 100
+    ).fillna(0)
+
+    clients = clients.sort_values(
+        by=["overdue_debt", "total_debt"],
+        ascending=[False, False],
+    )
 
     ui.label(f"Карточка вышестоящей: {parent_org_id}").classes("text-3xl font-bold mb-2")
     top_navigation()
