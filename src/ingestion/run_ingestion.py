@@ -1,12 +1,17 @@
 from pathlib import Path
+import os
+
+from dotenv import load_dotenv
 
 from src.ingestion.parse_ascii import parse_receivables_txt
 from src.ingestion.load_to_postgres import load_receivables_snapshot
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RAW_DIR = PROJECT_ROOT / "data" / "raw_work"
 
+load_dotenv(PROJECT_ROOT / ".env")
+
+RAW_DIR = PROJECT_ROOT / os.getenv("RAW_DIR", "data/raw")
 
 def main():
     files = sorted(RAW_DIR.glob("*.txt"))
