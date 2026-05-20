@@ -16,6 +16,11 @@ data/logs/*
 !data/marts/.gitkeep
 !data/logs/.gitkeep
 
+# real operational datasets
+data/raw_work/
+data/archive_work/
+data/failed_work/
+
 # demo dataset: allowed for GitHub
 !data/demo/
 !data/demo/**
