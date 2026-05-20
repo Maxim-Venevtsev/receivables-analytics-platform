@@ -11,6 +11,7 @@ data/logs/*
 
 # keep runtime folder structure
 !data/raw/.gitkeep
+!data/raw_work/.gitkeep
 !data/staging/.gitkeep
 !data/marts/.gitkeep
 !data/logs/.gitkeep
@@ -32,3 +33,5 @@ __pycache__/
 # system
 .DS_Store
 Thumbs.db
+
+schema_only.sql
