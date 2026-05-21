@@ -23,6 +23,15 @@ Potential metrics:
 - debt volatility
 - recurring cash gap indicators
 
+## Rating severity weighting
+
+Future versions may include severity weighting for client ratings:
+
+- reduce impact of very small overdue balances
+- increase downgrade impact for large overdue debt
+- distinguish technical overdue amounts from material collection risk
+- include overdue amount thresholds in configurable rating rules
+
 ## Parent organization analysis
 
 Future versions may include analysis by parent organization:
