@@ -1,0 +1,30 @@
+rating_window_days: 180
+min_full_confidence_snapshot_days: 180
+
+ratings:
+  5:
+    label: "Отличная дисциплина"
+    max_overdue_occurrence_ratio: 0.00
+    max_avg_overdue_share_pct: 0
+    max_max_days_overdue: 0
+
+  4:
+    label: "Надежный клиент"
+    max_overdue_occurrence_ratio: 0.10
+    max_avg_overdue_share_pct: 5
+    max_max_days_overdue: 3
+
+  3:
+    label: "Под контролем"
+    max_overdue_occurrence_ratio: 0.25
+    max_avg_overdue_share_pct: 15
+    max_max_days_overdue: 10
+
+  2:
+    label: "Риск"
+    max_overdue_occurrence_ratio: 0.50
+    max_avg_overdue_share_pct: 35
+    max_max_days_overdue: 30
+
+  1:
+    label: "Высокий риск"
