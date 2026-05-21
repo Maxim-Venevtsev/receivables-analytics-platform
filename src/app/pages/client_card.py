@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
 from fastapi import Request
+from src.app.components.rating_stars import rating_stars_html
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -153,31 +154,10 @@ def client_card_page(client_id: str, request: Request):
 
         stars = int(stars_raw)
 
-        star_colors = {
-            5: "#fbbf24",  # gold
-            4: "#f59e0b",  # warm yellow
-            3: "#eab308",  # neutral yellow
-            2: "#f97316",  # orange
-            1: "#ea580c",  # red-orange
-        }
+        stars_raw = df["stars"].iloc[0]
 
-        active_color = star_colors.get(stars, "#9ca3af")
-        inactive_color = "#d1d5db"
-
-        colored_stars = ""
-
-        for i in range(1, 6):
-
-            if i <= stars:
-                colored_stars += (
-                    f'<span style="color:{active_color};">★</span>'
-                )
-            else:
-                colored_stars += (
-                    f'<span style="color:{inactive_color};">☆</span>'
-                )
-
-        rating_text = colored_stars
+        stars = int(stars_raw) if pd.notna(stars_raw) else None
+        rating_text = rating_stars_html(stars)
 
     else:
         rating_text = "—"
