@@ -8,6 +8,7 @@ from nicegui import ui
 from sqlalchemy import create_engine, text
 
 from src.app.components.navigation import top_navigation
+from src.app.components.rating_stars import rating_stars_html
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -69,33 +70,39 @@ def parent_org_card_page(parent_org_id: str, request: Request):
 
     invoices = query_df("""
         SELECT
-            parent_org_id,
-            client_id,
-            client_name,
-            client_group,
+            i.parent_org_id,
+            i.client_id,
+            i.client_name,
+            i.client_group,
 
-            invoice_date,
-            due_date,
-            invoice_amount,
+            r.stars,
+            r.rating_display_label,
+            r.confidence_level,
 
-            days_overdue_real,
-            days_until_due_real,
+            i.invoice_date,
+            i.due_date,
+            i.invoice_amount,
 
-            is_overdue_real,
-            is_due_today,
-            is_due_in_3_days,
-            is_due_in_7_days,
+            i.days_overdue_real,
+            i.days_until_due_real,
 
-            CASE WHEN is_overdue_real THEN invoice_amount ELSE 0 END AS overdue_amount,
-            CASE WHEN is_due_today THEN invoice_amount ELSE 0 END AS due_today_amount,
+            i.is_overdue_real,
+            i.is_due_today,
+            i.is_due_in_3_days,
+            i.is_due_in_7_days,
+
+            CASE WHEN i.is_overdue_real THEN i.invoice_amount ELSE 0 END AS overdue_amount,
+            CASE WHEN i.is_due_today THEN i.invoice_amount ELSE 0 END AS due_today_amount,
             CASE
-                WHEN is_due_in_3_days AND NOT is_due_today
-                THEN invoice_amount
+                WHEN i.is_due_in_3_days AND NOT i.is_due_today
+                THEN i.invoice_amount
                 ELSE 0
             END AS due_soon_only_amount
-        FROM core.v_invoice_detail
-        WHERE parent_org_id = :parent_org_id
-        ORDER BY client_group, client_name, due_date
+        FROM core.v_invoice_detail i
+        LEFT JOIN core.v_client_rating r
+            ON i.client_id = r.client_id
+        WHERE i.parent_org_id = :parent_org_id
+        ORDER BY i.client_group, i.client_name, i.due_date
     """, {"parent_org_id": parent_org_id})
 
     if invoices.empty:
@@ -124,7 +131,7 @@ def parent_org_card_page(parent_org_id: str, request: Request):
 
     clients = (
         invoices
-        .groupby(["parent_org_id", "client_group", "client_id", "client_name"], as_index=False)
+        .groupby(["parent_org_id", "client_group", "client_id", "client_name", "stars"], as_index=False)
         .agg(
             invoice_count=("invoice_amount", "count"),
             total_debt=("invoice_amount", "sum"),
@@ -236,7 +243,9 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         df["due_soon_only_fmt"] = df["due_soon_only"].apply(money)
         df["overdue_debt_fmt"] = df["overdue_debt"].apply(money)
         df["overdue_share_fmt"] = df["overdue_share_pct"].apply(percent)
-        df["rating_placeholder"] = "—"
+        df["rating_html"] = df["stars"].apply(
+            lambda value: rating_stars_html(int(value)) if pd.notna(value) else "—"
+        )
 
         return df.to_dict("records")
 
@@ -251,15 +260,24 @@ def parent_org_card_page(parent_org_id: str, request: Request):
             {"name": "client_group", "label": "Филиал", "field": "client_group", "sortable": True},
             {"name": "client_id", "label": "Код клиента", "field": "client_id", "sortable": True},
             {"name": "client_name", "label": "Наименование", "field": "client_name", "sortable": True},
+            {"name": "rating_html", "label": "Рейтинг", "field": "rating_html", "align": "center"},
             {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
             {"name": "due_today", "label": "К оплате сегодня", "field": "due_today", "align": "right", "sortable": True},
             {"name": "due_soon_only", "label": "К оплате в ближайшие дни", "field": "due_soon_only", "align": "right", "sortable": True},
             {"name": "overdue_debt", "label": "Просрочка", "field": "overdue_debt", "align": "right", "sortable": True},
             {"name": "overdue_share_pct", "label": "% просрочки", "field": "overdue_share_pct", "align": "right", "sortable": True},
-            {"name": "rating_placeholder", "label": "Рейтинг", "field": "rating_placeholder", "align": "center"},
         ],
         rows=prepare_client_rows(),
     ).classes("w-full")
+
+    clients_table.add_slot(
+        "body-cell-rating_html",
+        """
+        <q-td :props="props" class="text-center">
+            <span v-html="props.row.rating_html"></span>
+        </q-td>
+        """,
+    )
 
     clients_table.add_slot(
         "body-cell-client_group",

@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
 from src.app.components.navigation import top_navigation
+from src.app.components.rating_stars import rating_aggrid_cell_renderer
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -55,18 +56,23 @@ def kpi_card(title: str, value: str, subtitle: str | None = None):
 def load_forecast_df() -> pd.DataFrame:
     df = query_df("""
         SELECT
-            client_id,
-            client_name,
-            client_group,
-            total_debt,
-            overdue_debt,
-            due_today,
-            due_in_3_days,
-            risk_category,
-            recommended_action
-        FROM core.v_client_priority
-        WHERE due_today > 0 OR due_in_3_days > 0
-        ORDER BY due_today DESC, due_in_3_days DESC
+            p.client_id,
+            p.client_name,
+            r.stars,
+            r.rating_display_label,
+            r.confidence_level,
+            p.client_group,
+            p.total_debt,
+            p.overdue_debt,
+            p.due_today,
+            p.due_in_3_days,
+            p.risk_category,
+            p.recommended_action
+        FROM core.v_client_priority p
+        LEFT JOIN core.v_client_rating r
+            ON p.client_id = r.client_id
+        WHERE p.due_today > 0 OR p.due_in_3_days > 0
+        ORDER BY p.due_today DESC, p.due_in_3_days DESC
     """)
 
     df["due_soon_only"] = (df["due_in_3_days"] - df["due_today"]).clip(lower=0)
@@ -260,6 +266,15 @@ def render_forecast_page(mode: str):
                     </span>
                 `
             """,
+        },
+        {
+            "headerName": "Рейтинг",
+            "field": "stars",
+            "sortable": True,
+            "filter": "agNumberColumnFilter",
+            "minWidth": 120,
+            "maxWidth": 140,
+            ":cellRenderer": rating_aggrid_cell_renderer(),
         },
         {"headerName": "Филиал", "field": "client_group", "sortable": True, "filter": True, "minWidth": 130},
         {

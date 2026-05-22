@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
 from src.app.components.navigation import top_navigation
+from src.app.components.rating_stars import rating_aggrid_cell_renderer
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -66,18 +67,23 @@ def overdue_page():
 
     df = query_df("""
         SELECT
-            client_id,
-            client_name,
-            client_group,
-            total_debt,
-            overdue_debt,
-            ROUND(overdue_debt / NULLIF(total_debt, 0) * 100, 2) AS overdue_share_pct,
-            max_days_overdue,
-            risk_category,
-            recommended_action
-        FROM core.v_client_priority
-        WHERE overdue_debt > 0
-        ORDER BY overdue_debt DESC
+            p.client_id,
+            p.client_name,
+            r.stars,
+            r.rating_display_label,
+            r.confidence_level,
+            p.client_group,
+            p.total_debt,
+            p.overdue_debt,
+            ROUND(p.overdue_debt / NULLIF(p.total_debt, 0) * 100, 2) AS overdue_share_pct,
+            p.max_days_overdue,
+            p.risk_category,
+            p.recommended_action
+        FROM core.v_client_priority p
+        LEFT JOIN core.v_client_rating r
+            ON p.client_id = r.client_id
+        WHERE p.overdue_debt > 0
+        ORDER BY p.overdue_debt DESC
     """)
 
     if df.empty:
@@ -219,6 +225,15 @@ def overdue_page():
                         </span>
                     `
                 """,
+            },
+            {
+                "headerName": "Рейтинг",
+                "field": "stars",
+                "sortable": True,
+                "filter": "agNumberColumnFilter",
+                "minWidth": 120,
+                "maxWidth": 140,
+                ":cellRenderer": rating_aggrid_cell_renderer(),
             },
             {
                 "headerName": "Филиал",

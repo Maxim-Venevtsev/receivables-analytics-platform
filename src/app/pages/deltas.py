@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
 from src.app.components.navigation import top_navigation
+from src.app.components.rating_stars import rating_aggrid_cell_renderer
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -68,17 +69,22 @@ def deltas_page():
 
     deltas = query_df("""
         SELECT
-            report_generated_date,
-            client_id,
-            client_name,
-            client_group,
-            previous_total_debt,
-            total_debt,
-            total_debt_delta,
-            debt_change_status
-        FROM core.v_client_deltas
-        WHERE previous_total_debt IS NOT NULL
-        ORDER BY report_generated_date DESC, ABS(total_debt_delta) DESC
+            d.report_generated_date,
+            d.client_id,
+            d.client_name,
+            r.stars,
+            r.rating_display_label,
+            r.confidence_level,
+            d.client_group,
+            d.previous_total_debt,
+            d.total_debt,
+            d.total_debt_delta,
+            d.debt_change_status
+        FROM core.v_client_deltas d
+        LEFT JOIN core.v_client_rating r
+            ON d.client_id = r.client_id
+        WHERE d.previous_total_debt IS NOT NULL
+        ORDER BY d.report_generated_date DESC, ABS(d.total_debt_delta) DESC
     """)
 
     deltas["debt_change_status"] = deltas["debt_change_status"].replace({
@@ -242,6 +248,15 @@ def deltas_page():
                         </span>
                     `
                 """,
+            },
+            {
+                "headerName": "Рейтинг",
+                "field": "stars",
+                "sortable": True,
+                "filter": "agNumberColumnFilter",
+                "minWidth": 120,
+                "maxWidth": 140,
+                ":cellRenderer": rating_aggrid_cell_renderer(),
             },
             {
                 "headerName": "Филиал",
