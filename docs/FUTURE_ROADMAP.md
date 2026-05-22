@@ -2,6 +2,14 @@
 
 ## Client payment discipline rating
 
+Current status:
+- first configurable rating engine implemented
+- rating rules are stored in YAML
+- rules are loaded into PostgreSQL
+- rating is calculated from historical snapshots
+- current confidence is marked as LOW until enough history is accumulated
+- rating is displayed across major operational UI tables
+
 Future versions may include a client rating model based on historical payment behavior.
 
 Possible rating levels:
@@ -31,6 +39,17 @@ Future versions may include severity weighting for client ratings:
 - increase downgrade impact for large overdue debt
 - distinguish technical overdue amounts from material collection risk
 - include overdue amount thresholds in configurable rating rules
+
+## Rating history and trend analysis
+
+Future versions may include rating dynamics:
+
+- rating changes over time
+- downgrade / upgrade alerts
+- rating trend chart on client card
+- parent-organization-level rating aggregation
+- branch-level rating distribution
+- historical rating audit trail
 
 ## Parent organization analysis
 

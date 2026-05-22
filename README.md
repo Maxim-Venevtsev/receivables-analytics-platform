@@ -95,6 +95,8 @@ SQL analytical views:
 - `v_parent_org_summary`
 - `v_parent_org_clients`
 - `v_parent_org_invoices`
+- `v_client_rating_base`
+- `v_client_rating`
 
 ## Frontend
 - NiceGUI
@@ -114,6 +116,11 @@ SQL analytical views:
 - risk segmentation
 - mobile-friendly UI
 - PostgreSQL analytical views
+- configurable client payment discipline rating
+- colored rating stars across operational views
+- YAML-driven business rules
+- incremental real-data ingestion workflow
+- isolated demo / work environment separation
 
 ---
 
@@ -258,6 +265,22 @@ Invoice-level details:
 - due date
 - overdue days
 - payment urgency bucket
+
+### Client payment discipline rating
+
+The platform includes a configurable client rating engine based on historical receivables behavior.
+
+Implemented capabilities:
+
+- YAML-based rating rules
+- PostgreSQL analytical rating views
+- rolling historical window logic
+- confidence levels depending on accumulated history
+- colored star rating visualization
+- reusable UI component for rating rendering
+- rating shown across client cards and operational client tables
+
+The current rating model is designed to evolve as more daily snapshots are accumulated.
 
 ---
 

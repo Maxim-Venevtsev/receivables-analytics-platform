@@ -17,6 +17,11 @@ The system already supports:
 - hierarchical drill-down
 - parent organization aggregation
 - invoice-level analytics
+- configurable client payment discipline rating
+- reusable rating UI component
+- rating visibility across operational client tables
+- isolated work database for real-data validation
+- incremental ingestion workflow
 
 ---
 
@@ -126,6 +131,8 @@ Current analytical views:
 - v_parent_org_summary
 - v_parent_org_clients
 - v_parent_org_invoices
+- v_client_rating_base
+- v_client_rating
 
 ---
 
@@ -140,6 +147,44 @@ Frontend already supports:
 - sorting
 - searching
 - operational highlighting
+
+---
+
+# Recently implemented
+
+## Real-data work environment
+
+Status: READY LOCALLY
+
+Implemented:
+- separate local work database: `debt_management_work`
+- `.env`-driven ingestion configuration
+- isolated raw work directory
+- incremental ingestion workflow
+- file archive / failed-file workflow
+- latest-snapshot operational views
+
+## Client payment discipline rating
+
+Status: READY LOCALLY
+
+Implemented:
+- YAML-configurable rating rules
+- PostgreSQL rating configuration tables
+- rolling-window rating base view
+- final client rating view
+- LOW / MEDIUM / FULL confidence levels
+- colored star rendering
+- reusable rating UI component
+
+Rating is currently shown in:
+- Client card
+- Dashboard operational client queue
+- Dynamics client changes table
+- Overdue clients table
+- Due today clients table
+- Due soon clients table
+- Parent organization counterparties table
 
 ---
 
