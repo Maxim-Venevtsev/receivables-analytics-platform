@@ -12,6 +12,7 @@ from src.app.pages.client_card import client_card_page
 from src.app.pages.forecast import due_today_page
 from src.app.pages.parent_org_card import parent_org_card_page
 from src.app.components.aging_bar import receivables_structure_bar
+from src.app.components.rating_stars import rating_aggrid_cell_renderer
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -70,17 +71,22 @@ def dashboard():
 
     priority = query_df("""
         SELECT
-            client_id,
-            client_name,
-            client_group,
-            total_debt,
-            overdue_debt,
-            due_today,
-            due_in_3_days,
-            risk_category,
-            recommended_action
-        FROM core.v_client_priority
-        ORDER BY risk_score DESC
+            p.client_id,
+            p.client_name,
+            r.stars,
+            r.rating_display_label,
+            r.confidence_level,
+            p.client_group,
+            p.total_debt,
+            p.overdue_debt,
+            p.due_today,
+            p.due_in_3_days,
+            p.risk_category,
+            p.recommended_action
+        FROM core.v_client_priority p
+        LEFT JOIN core.v_client_rating r
+            ON p.client_id = r.client_id
+        ORDER BY p.risk_score DESC
     """)
 
     priority["due_soon_only"] = (
@@ -118,8 +124,8 @@ def dashboard():
     def prepare_branch_rows():
         df = normalize_numeric_columns(branches)
 
-        if selected_branches:
-            df = df[df["client_group"].isin(selected_branches)]
+        df["is_selected"] = df["client_group"].isin(selected_branches)
+        df["is_dimmed"] = bool(selected_branches) & ~df["is_selected"]
 
         df["total_debt_fmt"] = df["total_debt"].apply(money)
         df["due_today_fmt"] = df["due_today"].apply(money)
@@ -147,8 +153,52 @@ def dashboard():
 
         return df.to_dict("records")
 
-    total_due_today = priority["due_today"].sum()
-    total_due_soon = priority["due_soon_only"].sum()
+    def get_filtered_structure_amounts() -> dict[str, float]:
+        df = normalize_numeric_columns(priority)
+
+        if selected_branches:
+            df = df[df["client_group"].isin(selected_branches)]
+
+        total_debt = float(df["total_debt"].sum())
+        overdue_debt = float(df["overdue_debt"].sum())
+        due_today = float(df["due_today"].sum())
+        due_soon_only = float(df["due_soon_only"].sum())
+
+        normal_debt = max(
+            total_debt - overdue_debt - due_today - due_soon_only,
+            0,
+        )
+
+        return {
+            "normal_debt": normal_debt,
+            "due_soon_only": due_soon_only,
+            "due_today": due_today,
+            "overdue_debt": overdue_debt,
+        }
+
+    def get_filtered_kpi_metrics() -> dict[str, float | int]:
+        df = normalize_numeric_columns(priority)
+
+        if selected_branches:
+            df = df[df["client_group"].isin(selected_branches)]
+
+        total_debt = float(df["total_debt"].sum())
+        overdue_debt = float(df["overdue_debt"].sum())
+        due_today = float(df["due_today"].sum())
+        due_soon_only = float(df["due_soon_only"].sum())
+
+        overdue_share_pct = (overdue_debt / total_debt * 100) if total_debt else 0
+        high_risk_client_count = int((df["risk_category"] == "HIGH").sum())
+
+        return {
+            "total_debt": total_debt,
+            "due_today": due_today,
+            "due_soon_only": due_soon_only,
+            "overdue_debt": overdue_debt,
+            "overdue_share_pct": overdue_share_pct,
+            "high_risk_client_count": high_risk_client_count,
+        }
+
 
     ui.label("АВС — Дебиторка").classes("text-3xl font-bold mb-2")
     ui.label("Operational Receivables Monitoring Platform") \
@@ -162,14 +212,24 @@ def dashboard():
         ui.button("🟡 Ближайшие 3 дня", on_click=lambda: ui.navigate.to("/due-soon")).props("flat color=warning")
 
     with ui.row().classes("gap-4"):
-        kpi_card("Общая задолженность", money(kpi.total_debt))
+        initial_kpi = get_filtered_kpi_metrics()
+
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Общая задолженность").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                total_debt_label = ui.label(money(initial_kpi["total_debt"])).classes(
+                    "text-2xl font-bold h-10 flex items-center justify-center"
+                )
+                ui.label("").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
         with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
             "click", lambda: ui.navigate.to("/due-today")
         ):
             with ui.column().classes("w-full h-full items-center justify-between text-center"):
                 ui.label("К оплате сегодня").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
-                ui.label(money(total_due_today)).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                due_today_label = ui.label(money(initial_kpi["due_today"])).classes(
+                    "text-2xl font-bold h-10 flex items-center justify-center"
+                )
                 ui.label("согласно срокам оплаты").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
         with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
@@ -177,7 +237,9 @@ def dashboard():
         ):
             with ui.column().classes("w-full h-full items-center justify-between text-center"):
                 ui.label("К оплате в ближайшие дни").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
-                ui.label(money(total_due_soon)).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                due_soon_label = ui.label(money(initial_kpi["due_soon_only"])).classes(
+                    "text-2xl font-bold h-10 flex items-center justify-center"
+                )
                 ui.label("в ближайшие 3 дня").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
         with ui.card().classes("w-64 h-36 p-4 cursor-pointer hover:shadow-lg").on(
@@ -185,28 +247,53 @@ def dashboard():
         ):
             with ui.column().classes("w-full h-full items-center justify-between text-center"):
                 ui.label("Просрочено").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
-                ui.label(money(kpi.overdue_debt)).classes("text-2xl font-bold h-10 flex items-center justify-center")
-                ui.label(f"{percent(kpi.overdue_share_pct)} от общей задолженности").classes(
-                    "text-sm text-gray-500 h-8 flex items-center justify-center"
+                overdue_label = ui.label(money(initial_kpi["overdue_debt"])).classes(
+                    "text-2xl font-bold h-10 flex items-center justify-center"
                 )
+                overdue_subtitle_label = ui.label(
+                    f"{percent(initial_kpi['overdue_share_pct'])} от общей задолженности"
+                ).classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-        kpi_card("Высокий риск", str(kpi.high_risk_client_count), "клиентов в красной зоне")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Высокий риск").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                high_risk_label = ui.label(str(initial_kpi["high_risk_client_count"])).classes(
+                    "text-2xl font-bold h-10 flex items-center justify-center"
+                )
+                ui.label("клиентов в красной зоне").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    normal_debt = (
-        float(kpi.total_debt)
-        - float(kpi.overdue_debt)
-        - float(kpi.due_today)
-        - total_due_soon
-    )
+    def update_kpi_cards():
+        metrics = get_filtered_kpi_metrics()
 
-    normal_debt = max(normal_debt, 0)
+        total_debt_label.text = money(metrics["total_debt"])
+        due_today_label.text = money(metrics["due_today"])
+        due_soon_label.text = money(metrics["due_soon_only"])
+        overdue_label.text = money(metrics["overdue_debt"])
+        overdue_subtitle_label.text = f"{percent(metrics['overdue_share_pct'])} от общей задолженности"
+        high_risk_label.text = str(metrics["high_risk_client_count"])
 
-    receivables_structure_bar(
-        normal_amount=normal_debt,
-        due_soon_amount=total_due_soon,
-        due_today_amount=float(kpi.due_today),
-        overdue_amount=float(kpi.overdue_debt),
-    )
+        total_debt_label.update()
+        due_today_label.update()
+        due_soon_label.update()
+        overdue_label.update()
+        overdue_subtitle_label.update()
+        high_risk_label.update()
+
+    structure_container = ui.column().classes("w-full")
+
+    def render_structure_bar():
+        amounts = get_filtered_structure_amounts()
+
+        structure_container.clear()
+        with structure_container:
+            receivables_structure_bar(
+                normal_amount=amounts["normal_debt"],
+                due_soon_amount=amounts["due_soon_only"],
+                due_today_amount=amounts["due_today"],
+                overdue_amount=amounts["overdue_debt"],
+            )
+
+    render_structure_bar()
 
     ui.separator().classes("my-4")
 
@@ -231,11 +318,13 @@ def dashboard():
     branch_table.add_slot(
         "body-cell-client_group",
         """
-        <q-td :props="props">
+        <q-td :props="props" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
             <q-btn
-                flat
                 dense
-                color="primary"
+                :flat="!props.row.is_selected"
+                :unelevated="props.row.is_selected"
+                :outline="!props.row.is_selected"
+                :color="props.row.is_selected ? 'primary' : 'grey-7'"
                 :label="props.row.client_group"
                 @click="$parent.$emit('branch_click', props.row.client_group)"
             />
@@ -246,7 +335,7 @@ def dashboard():
     branch_table.add_slot(
         "body-cell-total_debt",
         """
-        <q-td :props="props" class="text-right">
+        <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
             {{ props.row.total_debt_fmt }}
         </q-td>
         """,
@@ -255,7 +344,7 @@ def dashboard():
     branch_table.add_slot(
         "body-cell-due_today",
         """
-        <q-td :props="props" class="text-right">
+        <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
             <span style="color:#f59e0b; font-weight:600;">
                 {{ props.row.due_today_fmt }}
             </span>
@@ -266,7 +355,7 @@ def dashboard():
     branch_table.add_slot(
         "body-cell-due_soon_only",
         """
-        <q-td :props="props" class="text-right">
+        <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
             <span style="color:#ca8a04; font-weight:600;">
                 {{ props.row.due_soon_only_fmt }}
             </span>
@@ -277,7 +366,7 @@ def dashboard():
     branch_table.add_slot(
         "body-cell-overdue_debt",
         """
-        <q-td :props="props" class="text-right">
+        <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
             {{ props.row.overdue_debt_fmt }}
         </q-td>
         """,
@@ -286,7 +375,7 @@ def dashboard():
     branch_table.add_slot(
         "body-cell-overdue_share_pct",
         """
-        <q-td :props="props">
+        <q-td :props="props" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
             <q-badge
                 :color="props.row.overdue_share_pct > 20 ? 'red' : props.row.overdue_share_pct > 0 ? 'orange' : 'green'"
                 :label="props.row.overdue_share_fmt"
@@ -305,6 +394,7 @@ def dashboard():
 
     priority_grid = ui.aggrid({
         "columnDefs": [
+
             {
                 "headerName": "Клиент",
                 "field": "client_name",
@@ -319,7 +409,25 @@ def dashboard():
                     `
                 """,
             },
-            {"headerName": "Филиал", "field": "client_group", "sortable": True, "filter": True, "minWidth": 130},
+
+            {
+                "headerName": "Рейтинг",
+                "field": "stars",
+                "sortable": True,
+                "filter": "agNumberColumnFilter",
+                "minWidth": 120,
+                "maxWidth": 140,
+                ":cellRenderer": rating_aggrid_cell_renderer(),
+            },
+
+            {
+                "headerName": "Филиал",
+                "field": "client_group",
+                "sortable": True,
+                "filter": True,
+                "minWidth": 130,
+            },
+
             {
                 "headerName": "Долг",
                 "field": "total_debt",
@@ -388,12 +496,20 @@ def dashboard():
         branch_table.rows = prepare_branch_rows()
         branch_table.update()
 
+        update_kpi_cards()
+        render_structure_bar()
+
         priority_grid.options["rowData"] = prepare_priority_rows(search_input.value)
         priority_grid.update()
 
     def select_branch_from_table(event):
-        selected_branches.clear()
-        selected_branches.append(event.args)
+        branch = event.args
+
+        if branch in selected_branches:
+            selected_branches.remove(branch)
+        else:
+            selected_branches.append(branch)
+
         apply_filters()
 
     def reset_branch_filter():
