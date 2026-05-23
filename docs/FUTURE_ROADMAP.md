@@ -89,3 +89,89 @@ Future versions may include multi-currency support:
 - currency-specific branch summaries
 - optional FX conversion logic
 - hiding EUR blocks when no EUR-denominated debt exists
+
+## Notification system
+
+Future versions may include operational notification workflows:
+
+- configurable email reminders
+- reminder rules based on client rating
+- payment deadline notifications
+- escalation workflows
+- operational notification queue
+- automatic reminder scheduling
+
+## Client communication layer
+
+Future versions may include operational communication tracking:
+
+- client email storage
+- manual communication notes
+- collection interaction history
+- promised payment tracking
+- next-action reminders
+- communication timeline
+
+## Payment term analytics
+
+Future versions may include advanced payment-term analysis:
+
+- effective payment term calculation
+- contractual vs actual payment behavior
+- dynamic payment term adjustments
+- client payment discipline profiling
+- historical payment-term volatility
+- operational payment-term exceptions
+
+## Branch operational analytics
+
+Future versions may include branch-level operational monitoring:
+
+- branch operational scorecards
+- branch overdue benchmarking
+- branch collection efficiency comparison
+- branch risk heatmaps
+- branch trend analysis
+- branch workload monitoring
+
+## Operational workflow automation
+
+Future versions may include operational automation:
+
+- priority queue generation
+- automatic client escalation
+- smart operational sorting
+- collection workload balancing
+- configurable operational rules
+- action recommendation engine
+
+## Real production deployment
+
+Current status:
+- isolated local work database implemented
+- demo VPS deployment implemented
+- separate work environment architecture implemented
+- production deployment preparation in progress
+
+Next planned steps:
+
+- protected production deployment
+- scheduled ETL execution
+- backup automation
+- operational logging
+- user management
+- authentication layer
+- deployment automation
+
+## Frontend architecture evolution
+
+Future frontend improvements may include:
+
+- reusable dashboard widgets
+- configurable operational layouts
+- persistent filter state
+- role-based UI customization
+- responsive mobile operational views
+- advanced chart widgets
+- operational dark mode
+

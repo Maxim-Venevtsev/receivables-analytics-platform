@@ -103,6 +103,13 @@ SQL analytical views:
 - Interactive operational dashboard
 - Drill-down navigation
 - Clickable analytical workflow
+- Reusable frontend UI components
+
+Reusable frontend components:
+- branch_filter
+- aging_bar
+- navigation
+- rating_stars
 
 ---
 
@@ -121,6 +128,10 @@ SQL analytical views:
 - YAML-driven business rules
 - incremental real-data ingestion workflow
 - isolated demo / work environment separation
+- reusable branch filtering component
+- multi-select branch filtering
+- synchronized KPI recalculation
+- reusable frontend UI components
 
 ---
 
@@ -131,6 +142,14 @@ SQL analytical views:
 ## Dashboard
 
 ![Operational Dashboard](docs/images/dashboard_overview.jpg)
+
+Additional implemented UX features:
+
+- multi-select branch filtering
+- synchronized KPI recalculation
+- synchronized aging-bar updates
+- reusable filtering component architecture
+- unified filtering behavior across operational pages
 
 ---
 

@@ -147,6 +147,12 @@ Frontend already supports:
 - sorting
 - searching
 - operational highlighting
+- reusable branch filtering component
+- multi-select branch filtering
+- synchronized KPI recalculation
+- synchronized aging visualization
+- reusable frontend widgets
+- unified operational filtering behavior
 
 ---
 
@@ -185,6 +191,18 @@ Rating is currently shown in:
 - Due today clients table
 - Due soon clients table
 - Parent organization counterparties table
+
+## Frontend filtering refactor
+
+Status: READY
+
+Implemented:
+- reusable branch filter component
+- multi-select branch filtering
+- synchronized dashboard KPI recalculation
+- synchronized aging visualization
+- unified filtering logic across operational pages
+- reusable frontend filtering architecture
 
 ---
 
