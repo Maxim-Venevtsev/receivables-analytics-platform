@@ -5,6 +5,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
+from src.app.components.branch_filter import create_branch_filter
 from src.app.components.navigation import top_navigation
 from src.app.components.rating_stars import rating_aggrid_cell_renderer
 
@@ -49,14 +50,6 @@ def risk_order(category: str) -> int:
     if category == "MEDIUM":
         return 2
     return 1
-
-
-def kpi_card(title: str, value: str, subtitle: str | None = None):
-    with ui.card().classes("w-64 h-36 p-4"):
-        with ui.column().classes("w-full h-full items-center justify-between text-center"):
-            ui.label(title).classes("text-sm text-gray-500 h-6 flex items-center justify-center")
-            ui.label(value).classes("text-2xl font-bold h-10 flex items-center justify-center")
-            ui.label(subtitle or "").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
 
 @ui.page("/overdue")
@@ -108,104 +101,90 @@ def overdue_page():
                 result[col] = result[col].astype(float)
         return result
 
-    def prepare_branch_rows():
-        branch_df = normalize_numeric_columns(branches)
-
-        if selected_branches:
-            branch_df = branch_df[branch_df["client_group"].isin(selected_branches)]
-
-        branch_df["total_debt_fmt"] = branch_df["total_debt"].apply(money)
-        branch_df["overdue_debt_fmt"] = branch_df["overdue_debt"].apply(money)
-        branch_df["overdue_share_fmt"] = branch_df["overdue_share_pct"].apply(percent)
-
-        return branch_df.to_dict("records")
-
-    def prepare_overdue_rows():
+    def filtered_df() -> pd.DataFrame:
         overdue_df = normalize_numeric_columns(df)
-
         if selected_branches:
             overdue_df = overdue_df[overdue_df["client_group"].isin(selected_branches)]
+        return overdue_df
 
+    def prepare_overdue_rows():
+        overdue_df = filtered_df()
         overdue_df["risk_fmt"] = overdue_df["risk_category"].apply(risk_badge)
         overdue_df["risk_order"] = overdue_df["risk_category"].apply(risk_order)
-
         return overdue_df.to_dict("records")
 
-    total_overdue = df["overdue_debt"].sum()
-    total_debt = df["total_debt"].sum()
-    overdue_clients = df["client_id"].nunique()
-    max_days = int(df["max_days_overdue"].max())
+    def get_kpi_metrics() -> dict[str, float | int]:
+        overdue_df = filtered_df()
+        total_overdue = float(overdue_df["overdue_debt"].sum())
+        total_debt = float(overdue_df["total_debt"].sum())
+        max_days = int(overdue_df["max_days_overdue"].max()) if not overdue_df.empty else 0
+
+        return {
+            "total_overdue": total_overdue,
+            "overdue_clients": int(overdue_df["client_id"].nunique()),
+            "overdue_share_pct": total_overdue / total_debt * 100 if total_debt else 0,
+            "max_days": max_days,
+        }
+
+    initial_kpi = get_kpi_metrics()
 
     with ui.row().classes("gap-4"):
-        kpi_card("Просрочено", money(total_overdue))
-        kpi_card("Клиентов с просрочкой", str(overdue_clients))
-        kpi_card("% просрочки", percent(total_overdue / total_debt * 100 if total_debt else 0))
-        kpi_card("Макс. дней просрочки", str(max_days))
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Просрочено").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                total_overdue_label = ui.label(money(initial_kpi["total_overdue"])).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    ui.separator().classes("my-4")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Клиентов с просрочкой").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                overdue_clients_label = ui.label(str(initial_kpi["overdue_clients"])).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    with ui.row().classes("items-center gap-4"):
-        selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
-        ui.button(
-            "ВСЕ ФИЛИАЛЫ",
-            on_click=lambda: reset_branch_filter(),
-        ).props("flat color=primary")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("% просрочки").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                overdue_share_label = ui.label(percent(initial_kpi["overdue_share_pct"])).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    ui.label("Филиалы").classes("text-xl mt-6")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Макс. дней просрочки").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                max_days_label = ui.label(str(initial_kpi["max_days"])).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    branch_table = ui.table(
-        columns=[
-            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
-            {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
-            {"name": "overdue_debt", "label": "Просрочено", "field": "overdue_debt", "align": "right", "sortable": True},
-            {"name": "overdue_share_pct", "label": "% просрочки", "field": "overdue_share_pct", "align": "right", "sortable": True},
-        ],
-        rows=prepare_branch_rows(),
-    ).classes("w-full")
+    def update_kpi_cards():
+        metrics = get_kpi_metrics()
+        total_overdue_label.text = money(metrics["total_overdue"])
+        overdue_clients_label.text = str(metrics["overdue_clients"])
+        overdue_share_label.text = percent(metrics["overdue_share_pct"])
+        max_days_label.text = str(metrics["max_days"])
 
-    branch_table.add_slot(
-        "body-cell-client_group",
-        """
-        <q-td :props="props">
-            <q-btn
-                flat
-                dense
-                color="primary"
-                :label="props.row.client_group"
-                @click="$parent.$emit('branch_click', props.row.client_group)"
-            />
-        </q-td>
-        """,
-    )
+        total_overdue_label.update()
+        overdue_clients_label.update()
+        overdue_share_label.update()
+        max_days_label.update()
 
-    branch_table.add_slot(
-        "body-cell-total_debt",
-        """
-        <q-td :props="props" class="text-right">
-            {{ props.row.total_debt_fmt }}
-        </q-td>
-        """,
-    )
+    branch_filter = None
 
-    branch_table.add_slot(
-        "body-cell-overdue_debt",
-        """
-        <q-td :props="props" class="text-right">
-            {{ props.row.overdue_debt_fmt }}
-        </q-td>
-        """,
-    )
+    def apply_filters():
+        branch_filter.update()
+        update_kpi_cards()
+        overdue_grid.options["rowData"] = prepare_overdue_rows()
+        overdue_grid.update()
 
-    branch_table.add_slot(
-        "body-cell-overdue_share_pct",
-        """
-        <q-td :props="props">
-            <q-badge
-                :color="props.row.overdue_share_pct > 50 ? 'red' : props.row.overdue_share_pct > 20 ? 'orange' : 'blue'"
-                :label="props.row.overdue_share_fmt"
-            />
-        </q-td>
-        """,
+    branch_columns = [
+        {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
+        {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
+        {"name": "overdue_debt", "label": "Просрочено", "field": "overdue_debt", "align": "right", "sortable": True},
+        {"name": "overdue_share_pct", "label": "% просрочки", "field": "overdue_share_pct", "align": "right", "sortable": True},
+    ]
+
+    branch_filter = create_branch_filter(
+        branches=branches,
+        selected_branches=selected_branches,
+        on_change=apply_filters,
+        columns=branch_columns,
     )
 
     ui.label("Проблемные клиенты").classes("text-xl mt-6")
@@ -235,13 +214,7 @@ def overdue_page():
                 "maxWidth": 140,
                 ":cellRenderer": rating_aggrid_cell_renderer(),
             },
-            {
-                "headerName": "Филиал",
-                "field": "client_group",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 130,
-            },
+            {"headerName": "Филиал", "field": "client_group", "sortable": True, "filter": True, "minWidth": 130},
             {
                 "headerName": "Весь долг",
                 "field": "total_debt",
@@ -279,14 +252,7 @@ def overdue_page():
                     }
                 """,
             },
-            {
-                "headerName": "Макс. дней",
-                "field": "max_days_overdue",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 120,
-            },
+            {"headerName": "Макс. дней", "field": "max_days_overdue", "sortable": True, "filter": "agNumberColumnFilter", "type": "rightAligned", "minWidth": 120},
             {
                 "headerName": "Риск",
                 "field": "risk_order",
@@ -320,37 +286,11 @@ def overdue_page():
             },
         ],
         "rowData": prepare_overdue_rows(),
-        "defaultColDef": {
-            "resizable": True,
-            "sortable": True,
-            "filter": True,
-        },
+        "defaultColDef": {"resizable": True, "sortable": True, "filter": True},
         "pagination": True,
         "paginationPageSize": 20,
         "domLayout": "autoHeight",
     }).classes("w-full")
-
-    def apply_filters():
-        if selected_branches:
-            selected_branch_label.text = f"Фильтр: {', '.join(selected_branches)}"
-        else:
-            selected_branch_label.text = "Показаны все филиалы"
-        selected_branch_label.update()
-
-        branch_table.rows = prepare_branch_rows()
-        branch_table.update()
-
-        overdue_grid.options["rowData"] = prepare_overdue_rows()
-        overdue_grid.update()
-
-    def select_branch_from_table(event):
-        selected_branches.clear()
-        selected_branches.append(event.args)
-        apply_filters()
-
-    def reset_branch_filter():
-        selected_branches.clear()
-        apply_filters()
 
     def open_client_card_from_grid(event):
         args = event.args or {}
@@ -365,5 +305,4 @@ def overdue_page():
         if col_id == "client_name" and data.get("client_id"):
             ui.navigate.to(f"/client/{data['client_id']}?from=overdue")
 
-    branch_table.on("branch_click", select_branch_from_table)
     overdue_grid.on("cellClicked", open_client_card_from_grid)

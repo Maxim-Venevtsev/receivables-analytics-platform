@@ -5,6 +5,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
+from src.app.components.branch_filter import create_branch_filter
 from src.app.components.navigation import top_navigation
 from src.app.components.rating_stars import rating_aggrid_cell_renderer
 
@@ -29,26 +30,10 @@ def money(value) -> str:
     return f"{float(value):,.0f}".replace(",", " ")
 
 
-def signed_money(value) -> str:
-    if pd.isna(value):
-        return "0"
-    number = float(value)
-    sign = "+" if number > 0 else ""
-    return f"{sign}{number:,.0f}".replace(",", " ")
-
-
 def percent(value) -> str:
     if pd.isna(value):
         return "0%"
     return f"{float(value):.1f}%"
-
-
-def kpi_card(title: str, value: str, subtitle: str | None = None):
-    with ui.card().classes("w-64 h-36 p-4"):
-        with ui.column().classes("w-full h-full items-center justify-between text-center"):
-            ui.label(title).classes("text-sm text-gray-500 h-6 flex items-center justify-center")
-            ui.label(value).classes("text-2xl font-bold h-10 flex items-center justify-center")
-            ui.label(subtitle or "").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
 
 @ui.page("/deltas")
@@ -88,10 +73,10 @@ def deltas_page():
     """)
 
     deltas["debt_change_status"] = deltas["debt_change_status"].replace({
-    "DEBT INCREASED": "Вырос",
-    "DEBT DECREASED": "Уменьшился",
-    "NO CHANGE": "Не изменился",
-    "NEW IN SNAPSHOT": "Новый в срезе",
+        "DEBT INCREASED": "Вырос",
+        "DEBT DECREASED": "Уменьшился",
+        "NO CHANGE": "Не изменился",
+        "NEW IN SNAPSHOT": "Новый в срезе",
     })
 
     selected_branches: list[str] = []
@@ -109,23 +94,14 @@ def deltas_page():
                 df[col] = df[col].astype(float)
         return df
 
-    def prepare_branch_rows():
-        df = normalize_numeric_columns(branches)
-
+    def filtered_deltas() -> pd.DataFrame:
+        df = normalize_numeric_columns(deltas)
         if selected_branches:
             df = df[df["client_group"].isin(selected_branches)]
-
-        df["total_debt_fmt"] = df["total_debt"].apply(money)
-        df["overdue_debt_fmt"] = df["overdue_debt"].apply(money)
-        df["overdue_share_fmt"] = df["overdue_share_pct"].apply(percent)
-
-        return df.to_dict("records")
+        return df
 
     def prepare_delta_rows(search_text: str = ""):
-        df = normalize_numeric_columns(deltas)
-
-        if selected_branches:
-            df = df[df["client_group"].isin(selected_branches)]
+        df = filtered_deltas()
 
         search_text = (search_text or "").strip().lower()
         if search_text:
@@ -136,86 +112,86 @@ def deltas_page():
 
         return df.to_dict("records")
 
-    # KPI
-    df_kpi = normalize_numeric_columns(deltas)
-    increased_count = int((df_kpi["total_debt_delta"] > 0).sum())
-    decreased_count = int((df_kpi["total_debt_delta"] < 0).sum())
-    unchanged_count = int((df_kpi["total_debt_delta"] == 0).sum())
+    def get_kpi_metrics() -> dict[str, float | int]:
+        df = filtered_deltas()
+        increased_count = int((df["total_debt_delta"] > 0).sum())
+        decreased_count = int((df["total_debt_delta"] < 0).sum())
+        unchanged_count = int((df["total_debt_delta"] == 0).sum())
+        total_increase = float(df.loc[df["total_debt_delta"] > 0, "total_debt_delta"].sum())
+        total_decrease = float(df.loc[df["total_debt_delta"] < 0, "total_debt_delta"].sum())
 
-    total_increase = df_kpi.loc[df_kpi["total_debt_delta"] > 0, "total_debt_delta"].sum()
-    total_decrease = df_kpi.loc[df_kpi["total_debt_delta"] < 0, "total_debt_delta"].sum()
+        return {
+            "increased_count": increased_count,
+            "decreased_count": decreased_count,
+            "unchanged_count": unchanged_count,
+            "total_increase": total_increase,
+            "total_decrease_abs": abs(total_decrease),
+            "rows_count": len(df),
+        }
+
+    initial_kpi = get_kpi_metrics()
 
     with ui.row().classes("gap-4"):
-        kpi_card("Долг вырос", money(total_increase), f"{increased_count} клиентов")
-        kpi_card("Долг снизился", money(abs(total_decrease)), f"{decreased_count} клиентов")
-        kpi_card("Без изменений", str(unchanged_count), "клиентов")
-        kpi_card("Строк в анализе", str(len(df_kpi)), "изменения по клиентам")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Долг вырос").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                increased_value_label = ui.label(money(initial_kpi["total_increase"])).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                increased_subtitle_label = ui.label(f"{initial_kpi['increased_count']} клиентов").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    ui.separator().classes("my-4")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Долг снизился").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                decreased_value_label = ui.label(money(initial_kpi["total_decrease_abs"])).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                decreased_subtitle_label = ui.label(f"{initial_kpi['decreased_count']} клиентов").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    # Branch filter block
-    with ui.row().classes("items-center gap-4"):
-        selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
-        ui.button(
-            "ВСЕ ФИЛИАЛЫ",
-            on_click=lambda: reset_branch_filter(),
-        ).props("flat color=primary")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Без изменений").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                unchanged_value_label = ui.label(str(initial_kpi["unchanged_count"])).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("клиентов").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    ui.label("Филиалы").classes("text-xl mt-6")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Строк в анализе").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                rows_count_label = ui.label(str(initial_kpi["rows_count"])).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("изменения по клиентам").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    branch_table = ui.table(
-        columns=[
-            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
-            {"name": "total_debt", "label": "Долг", "field": "total_debt", "align": "right", "sortable": True},
-            {"name": "overdue_debt", "label": "Просрочка", "field": "overdue_debt", "align": "right", "sortable": True},
-            {"name": "overdue_share_pct", "label": "% просрочки", "field": "overdue_share_pct", "align": "right", "sortable": True},
-        ],
-        rows=prepare_branch_rows(),
-    ).classes("w-full")
+    def update_kpi_cards():
+        metrics = get_kpi_metrics()
+        increased_value_label.text = money(metrics["total_increase"])
+        increased_subtitle_label.text = f"{metrics['increased_count']} клиентов"
+        decreased_value_label.text = money(metrics["total_decrease_abs"])
+        decreased_subtitle_label.text = f"{metrics['decreased_count']} клиентов"
+        unchanged_value_label.text = str(metrics["unchanged_count"])
+        rows_count_label.text = str(metrics["rows_count"])
 
-    branch_table.add_slot(
-        "body-cell-client_group",
-        """
-        <q-td :props="props">
-            <q-btn
-                flat
-                dense
-                color="primary"
-                :label="props.row.client_group"
-                @click="$parent.$emit('branch_click', props.row.client_group)"
-            />
-        </q-td>
-        """,
-    )
+        increased_value_label.update()
+        increased_subtitle_label.update()
+        decreased_value_label.update()
+        decreased_subtitle_label.update()
+        unchanged_value_label.update()
+        rows_count_label.update()
 
-    branch_table.add_slot(
-        "body-cell-total_debt",
-        """
-        <q-td :props="props" class="text-right">
-            {{ props.row.total_debt_fmt }}
-        </q-td>
-        """,
-    )
+    branch_filter = None
 
-    branch_table.add_slot(
-        "body-cell-overdue_debt",
-        """
-        <q-td :props="props" class="text-right">
-            {{ props.row.overdue_debt_fmt }}
-        </q-td>
-        """,
-    )
+    def apply_filters():
+        branch_filter.update()
+        update_kpi_cards()
+        delta_grid.options["rowData"] = prepare_delta_rows(search_input.value)
+        delta_grid.update()
 
-    branch_table.add_slot(
-        "body-cell-overdue_share_pct",
-        """
-        <q-td :props="props">
-            <q-badge
-                :color="props.row.overdue_share_pct > 20 ? 'red' : props.row.overdue_share_pct > 0 ? 'orange' : 'green'"
-                :label="props.row.overdue_share_fmt"
-            />
-        </q-td>
-        """,
+    branch_columns = [
+        {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
+        {"name": "total_debt", "label": "Долг", "field": "total_debt", "align": "right", "sortable": True},
+        {"name": "overdue_debt", "label": "Просрочка", "field": "overdue_debt", "align": "right", "sortable": True},
+        {"name": "overdue_share_pct", "label": "% просрочки", "field": "overdue_share_pct", "align": "right", "sortable": True},
+    ]
+
+    branch_filter = create_branch_filter(
+        branches=branches,
+        selected_branches=selected_branches,
+        on_change=apply_filters,
+        columns=branch_columns,
     )
 
     ui.label("Изменения по клиентам").classes("text-xl mt-6")
@@ -228,13 +204,7 @@ def deltas_page():
 
     delta_grid = ui.aggrid({
         "columnDefs": [
-            {
-                "headerName": "Дата",
-                "field": "report_generated_date",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 130,
-            },
+            {"headerName": "Дата", "field": "report_generated_date", "sortable": True, "filter": True, "minWidth": 130},
             {
                 "headerName": "Клиент",
                 "field": "client_name",
@@ -258,13 +228,7 @@ def deltas_page():
                 "maxWidth": 140,
                 ":cellRenderer": rating_aggrid_cell_renderer(),
             },
-            {
-                "headerName": "Филиал",
-                "field": "client_group",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 130,
-            },
+            {"headerName": "Филиал", "field": "client_group", "sortable": True, "filter": True, "minWidth": 130},
             {
                 "headerName": "Было",
                 "field": "previous_total_debt",
@@ -319,37 +283,11 @@ def deltas_page():
             },
         ],
         "rowData": prepare_delta_rows(),
-        "defaultColDef": {
-            "resizable": True,
-            "sortable": True,
-            "filter": True,
-        },
+        "defaultColDef": {"resizable": True, "sortable": True, "filter": True},
         "pagination": True,
         "paginationPageSize": 20,
         "domLayout": "autoHeight",
     }).classes("w-full")
-
-    def apply_filters():
-        if selected_branches:
-            selected_branch_label.text = f"Фильтр: {', '.join(selected_branches)}"
-        else:
-            selected_branch_label.text = "Показаны все филиалы"
-        selected_branch_label.update()
-
-        branch_table.rows = prepare_branch_rows()
-        branch_table.update()
-
-        delta_grid.options["rowData"] = prepare_delta_rows(search_input.value)
-        delta_grid.update()
-
-    def select_branch_from_table(event):
-        selected_branches.clear()
-        selected_branches.append(event.args)
-        apply_filters()
-
-    def reset_branch_filter():
-        selected_branches.clear()
-        apply_filters()
 
     def open_client_card_from_grid(event):
         args = event.args or {}
@@ -364,6 +302,5 @@ def deltas_page():
         if col_id == "client_name" and data.get("client_id"):
             ui.navigate.to(f"/client/{data['client_id']}?from=deltas")
 
-    branch_table.on("branch_click", select_branch_from_table)
     delta_grid.on("cellClicked", open_client_card_from_grid)
     search_input.on_value_change(lambda _: apply_filters())

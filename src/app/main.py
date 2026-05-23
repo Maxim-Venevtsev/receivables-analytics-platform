@@ -12,6 +12,7 @@ from src.app.pages.client_card import client_card_page
 from src.app.pages.forecast import due_today_page
 from src.app.pages.parent_org_card import parent_org_card_page
 from src.app.components.aging_bar import receivables_structure_bar
+from src.app.components.branch_filter import create_branch_filter
 from src.app.components.rating_stars import rating_aggrid_cell_renderer
 
 
@@ -120,20 +121,6 @@ def dashboard():
             if col in df.columns:
                 df[col] = df[col].astype(float)
         return df
-
-    def prepare_branch_rows():
-        df = normalize_numeric_columns(branches)
-
-        df["is_selected"] = df["client_group"].isin(selected_branches)
-        df["is_dimmed"] = bool(selected_branches) & ~df["is_selected"]
-
-        df["total_debt_fmt"] = df["total_debt"].apply(money)
-        df["due_today_fmt"] = df["due_today"].apply(money)
-        df["due_soon_only_fmt"] = df["due_soon_only"].apply(money)
-        df["overdue_debt_fmt"] = df["overdue_debt"].apply(money)
-        df["overdue_share_fmt"] = df["overdue_share_pct"].apply(percent)
-
-        return df.to_dict("records")
 
     def prepare_priority_rows(search_text: str = ""):
         df = normalize_numeric_columns(priority)
@@ -295,93 +282,10 @@ def dashboard():
 
     render_structure_bar()
 
-    ui.separator().classes("my-4")
-
-    with ui.row().classes("items-center gap-4"):
-        selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
-        ui.button("ВСЕ ФИЛИАЛЫ", on_click=lambda: reset_branch_filter()).props("flat color=primary")
-
-    ui.label("Филиалы").classes("text-xl mt-6")
-
-    branch_table = ui.table(
-        columns=[
-            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
-            {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
-            {"name": "due_today", "label": "К оплате сегодня", "field": "due_today", "align": "right", "sortable": True},
-            {"name": "due_soon_only", "label": "К оплате в ближайшие дни", "field": "due_soon_only", "align": "right", "sortable": True},
-            {"name": "overdue_debt", "label": "Просрочка", "field": "overdue_debt", "align": "right", "sortable": True},
-            {"name": "overdue_share_pct", "label": "% просрочки", "field": "overdue_share_pct", "align": "right", "sortable": True},
-        ],
-        rows=prepare_branch_rows(),
-    ).classes("w-full")
-
-    branch_table.add_slot(
-        "body-cell-client_group",
-        """
-        <q-td :props="props" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            <q-btn
-                dense
-                :flat="!props.row.is_selected"
-                :unelevated="props.row.is_selected"
-                :outline="!props.row.is_selected"
-                :color="props.row.is_selected ? 'primary' : 'grey-7'"
-                :label="props.row.client_group"
-                @click="$parent.$emit('branch_click', props.row.client_group)"
-            />
-        </q-td>
-        """,
-    )
-
-    branch_table.add_slot(
-        "body-cell-total_debt",
-        """
-        <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            {{ props.row.total_debt_fmt }}
-        </q-td>
-        """,
-    )
-
-    branch_table.add_slot(
-        "body-cell-due_today",
-        """
-        <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            <span style="color:#f59e0b; font-weight:600;">
-                {{ props.row.due_today_fmt }}
-            </span>
-        </q-td>
-        """,
-    )
-
-    branch_table.add_slot(
-        "body-cell-due_soon_only",
-        """
-        <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            <span style="color:#ca8a04; font-weight:600;">
-                {{ props.row.due_soon_only_fmt }}
-            </span>
-        </q-td>
-        """,
-    )
-
-    branch_table.add_slot(
-        "body-cell-overdue_debt",
-        """
-        <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            {{ props.row.overdue_debt_fmt }}
-        </q-td>
-        """,
-    )
-
-    branch_table.add_slot(
-        "body-cell-overdue_share_pct",
-        """
-        <q-td :props="props" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            <q-badge
-                :color="props.row.overdue_share_pct > 20 ? 'red' : props.row.overdue_share_pct > 0 ? 'orange' : 'green'"
-                :label="props.row.overdue_share_fmt"
-            />
-        </q-td>
-        """,
+    branch_filter = create_branch_filter(
+        branches=branches,
+        selected_branches=selected_branches,
+        on_change=lambda: apply_filters(),
     )
 
     ui.label("Клиенты в работе").classes("text-xl mt-6")
@@ -490,31 +394,13 @@ def dashboard():
     }).classes("w-full")
 
     def apply_filters():
-        selected_branch_label.text = f"Фильтр: {', '.join(selected_branches)}" if selected_branches else "Показаны все филиалы"
-        selected_branch_label.update()
-
-        branch_table.rows = prepare_branch_rows()
-        branch_table.update()
+        branch_filter.update()
 
         update_kpi_cards()
         render_structure_bar()
 
         priority_grid.options["rowData"] = prepare_priority_rows(search_input.value)
         priority_grid.update()
-
-    def select_branch_from_table(event):
-        branch = event.args
-
-        if branch in selected_branches:
-            selected_branches.remove(branch)
-        else:
-            selected_branches.append(branch)
-
-        apply_filters()
-
-    def reset_branch_filter():
-        selected_branches.clear()
-        apply_filters()
 
     def open_client_card_from_grid(event):
         args = event.args or {}
@@ -529,7 +415,6 @@ def dashboard():
         if col_id == "client_name" and data.get("client_id"):
             ui.navigate.to(f"/client/{data['client_id']}?from=dashboard")
 
-    branch_table.on("branch_click", select_branch_from_table)
     priority_grid.on("cellClicked", open_client_card_from_grid)
     search_input.on_value_change(lambda _: apply_filters())
 

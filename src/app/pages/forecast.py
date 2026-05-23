@@ -5,6 +5,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
+from src.app.components.branch_filter import create_branch_filter
 from src.app.components.navigation import top_navigation
 from src.app.components.rating_stars import rating_aggrid_cell_renderer
 
@@ -43,14 +44,6 @@ def risk_order(category: str) -> int:
     if category == "MEDIUM":
         return 2
     return 1
-
-
-def kpi_card(title: str, value: str, subtitle: str | None = None):
-    with ui.card().classes("w-64 h-36 p-4"):
-        with ui.column().classes("w-full h-full items-center justify-between text-center"):
-            ui.label(title).classes("text-sm text-gray-500 h-6 flex items-center justify-center")
-            ui.label(value).classes("text-2xl font-bold h-10 flex items-center justify-center")
-            ui.label(subtitle or "").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
 
 def load_forecast_df() -> pd.DataFrame:
@@ -120,24 +113,14 @@ def render_forecast_page(mode: str):
         )
     )
 
-    def prepare_branch_rows():
-        branch_df = normalize_numeric_columns(branches)
-
-        if selected_branches:
-            branch_df = branch_df[branch_df["client_group"].isin(selected_branches)]
-
-        branch_df["total_debt_fmt"] = branch_df["total_debt"].apply(money)
-        branch_df["due_today_fmt"] = branch_df["due_today"].apply(money)
-        branch_df["due_soon_only_fmt"] = branch_df["due_soon_only"].apply(money)
-        branch_df["clients_to_control_fmt"] = branch_df["clients_to_control"].astype(int).astype(str)
-
-        return branch_df.to_dict("records")
-
-    def prepare_rows(search_text: str = ""):
+    def filtered_df() -> pd.DataFrame:
         result = normalize_numeric_columns(df)
-
         if selected_branches:
             result = result[result["client_group"].isin(selected_branches)]
+        return result
+
+    def prepare_rows(search_text: str = ""):
+        result = filtered_df()
 
         search_text = (search_text or "").strip().lower()
         if search_text:
@@ -151,29 +134,76 @@ def render_forecast_page(mode: str):
 
         return result.to_dict("records")
 
-    total_due_today = df["due_today"].sum()
-    total_due_soon = df["due_soon_only"].sum()
-    client_count = df["client_id"].nunique()
-    high_risk_count = int((df["risk_category"] == "HIGH").sum())
+    def get_kpi_metrics() -> dict[str, float | int]:
+        result = filtered_df()
+        return {
+            "due_today": float(result["due_today"].sum()),
+            "due_soon_only": float(result["due_soon_only"].sum()),
+            "client_count": int(result["client_id"].nunique()),
+            "high_risk_count": int((result["risk_category"] == "HIGH").sum()),
+        }
+
+    initial_kpi = get_kpi_metrics()
 
     with ui.row().classes("gap-4"):
         if is_due_today_page:
-            kpi_card("К оплате сегодня", money(total_due_today))
-            kpi_card("К оплате в ближайшие дни", money(total_due_soon))
+            first_title = "К оплате сегодня"
+            first_value = initial_kpi["due_today"]
+            second_title = "К оплате в ближайшие дни"
+            second_value = initial_kpi["due_soon_only"]
         else:
-            kpi_card("К оплате в ближайшие дни", money(total_due_soon))
-            kpi_card("К оплате сегодня", money(total_due_today))
+            first_title = "К оплате в ближайшие дни"
+            first_value = initial_kpi["due_soon_only"]
+            second_title = "К оплате сегодня"
+            second_value = initial_kpi["due_today"]
 
-        kpi_card("Клиентов к контролю", str(client_count))
-        kpi_card("Высокий риск", str(high_risk_count), "клиентов в красной зоне")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label(first_title).classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                first_value_label = ui.label(money(first_value)).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    ui.separator().classes("my-4")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label(second_title).classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                second_value_label = ui.label(money(second_value)).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    with ui.row().classes("items-center gap-4"):
-        selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
-        ui.button("ВСЕ ФИЛИАЛЫ", on_click=lambda: reset_branch_filter()).props("flat color=primary")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Клиентов к контролю").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                client_count_label = ui.label(str(initial_kpi["client_count"])).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
-    ui.label("Филиалы").classes("text-xl mt-6")
+        with ui.card().classes("w-64 h-36 p-4"):
+            with ui.column().classes("w-full h-full items-center justify-between text-center"):
+                ui.label("Высокий риск").classes("text-sm text-gray-500 h-6 flex items-center justify-center")
+                high_risk_label = ui.label(str(initial_kpi["high_risk_count"])).classes("text-2xl font-bold h-10 flex items-center justify-center")
+                ui.label("клиентов в красной зоне").classes("text-sm text-gray-500 h-8 flex items-center justify-center")
+
+    def update_kpi_cards():
+        metrics = get_kpi_metrics()
+        if is_due_today_page:
+            first_value_label.text = money(metrics["due_today"])
+            second_value_label.text = money(metrics["due_soon_only"])
+        else:
+            first_value_label.text = money(metrics["due_soon_only"])
+            second_value_label.text = money(metrics["due_today"])
+        client_count_label.text = str(metrics["client_count"])
+        high_risk_label.text = str(metrics["high_risk_count"])
+
+        first_value_label.update()
+        second_value_label.update()
+        client_count_label.update()
+        high_risk_label.update()
+
+    branch_filter = None
+
+    def apply_filters():
+        branch_filter.update()
+        update_kpi_cards()
+        grid.options["rowData"] = prepare_rows(search_input.value)
+        grid.update()
 
     branch_columns = [
         {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
@@ -187,61 +217,11 @@ def render_forecast_page(mode: str):
 
     branch_columns.append({"name": "clients_to_control", "label": "Клиентов к контролю", "field": "clients_to_control", "align": "right", "sortable": True})
 
-    branch_table = ui.table(columns=branch_columns, rows=prepare_branch_rows()).classes("w-full")
-
-    branch_table.add_slot(
-        "body-cell-client_group",
-        """
-        <q-td :props="props">
-            <q-btn
-                flat
-                dense
-                color="primary"
-                :label="props.row.client_group"
-                @click="$parent.$emit('branch_click', props.row.client_group)"
-            />
-        </q-td>
-        """,
-    )
-
-    branch_table.add_slot(
-        "body-cell-total_debt",
-        """
-        <q-td :props="props" class="text-right">
-            {{ props.row.total_debt_fmt }}
-        </q-td>
-        """,
-    )
-
-    branch_table.add_slot(
-        "body-cell-due_today",
-        """
-        <q-td :props="props" class="text-right">
-            <span style="color:#f59e0b; font-weight:600;">
-                {{ props.row.due_today_fmt }}
-            </span>
-        </q-td>
-        """,
-    )
-
-    branch_table.add_slot(
-        "body-cell-due_soon_only",
-        """
-        <q-td :props="props" class="text-right">
-            <span style="color:#ca8a04; font-weight:600;">
-                {{ props.row.due_soon_only_fmt }}
-            </span>
-        </q-td>
-        """,
-    )
-
-    branch_table.add_slot(
-        "body-cell-clients_to_control",
-        """
-        <q-td :props="props" class="text-right">
-            {{ props.row.clients_to_control_fmt }}
-        </q-td>
-        """,
+    branch_filter = create_branch_filter(
+        branches=branches,
+        selected_branches=selected_branches,
+        on_change=apply_filters,
+        columns=branch_columns,
     )
 
     ui.label("Клиенты к контролю").classes("text-xl mt-6")
@@ -373,34 +353,11 @@ def render_forecast_page(mode: str):
     grid = ui.aggrid({
         "columnDefs": client_columns,
         "rowData": prepare_rows(),
-        "defaultColDef": {
-            "resizable": True,
-            "sortable": True,
-            "filter": True,
-        },
+        "defaultColDef": {"resizable": True, "sortable": True, "filter": True},
         "pagination": True,
         "paginationPageSize": 20,
         "domLayout": "autoHeight",
     }).classes("w-full")
-
-    def apply_filters():
-        selected_branch_label.text = f"Фильтр: {', '.join(selected_branches)}" if selected_branches else "Показаны все филиалы"
-        selected_branch_label.update()
-
-        branch_table.rows = prepare_branch_rows()
-        branch_table.update()
-
-        grid.options["rowData"] = prepare_rows(search_input.value)
-        grid.update()
-
-    def select_branch_from_table(event):
-        selected_branches.clear()
-        selected_branches.append(event.args)
-        apply_filters()
-
-    def reset_branch_filter():
-        selected_branches.clear()
-        apply_filters()
 
     def open_client_card_from_grid(event):
         args = event.args or {}
@@ -416,7 +373,6 @@ def render_forecast_page(mode: str):
             origin = "due-today" if mode == "today" else "due-soon"
             ui.navigate.to(f"/client/{data['client_id']}?from={origin}")
 
-    branch_table.on("branch_click", select_branch_from_table)
     grid.on("cellClicked", open_client_card_from_grid)
     search_input.on_value_change(lambda _: apply_filters())
 
