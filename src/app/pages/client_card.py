@@ -12,7 +12,12 @@ from src.app.components.charts import (
     build_client_debt_history_chart,
     build_client_debt_structure_chart,
 )
-
+from src.app.components.kpi_cards import (
+    money,
+    percent,
+    kpi_card,
+    compact_kpi_card,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -26,23 +31,6 @@ engine = create_engine(
 def query_df(sql: str, params: dict = None) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(sql), conn, params=params)
-
-
-def money(value):
-    return f"{float(value):,.0f}".replace(",", " ")
-
-
-def percent(value):
-    return f"{value:.1f}%"
-
-
-def kpi_card(title: str, value: str, subtitle: str | None = None):
-    with ui.card().classes("w-64 h-36 p-4"):
-        with ui.column().classes("w-full h-full items-center justify-between text-center"):
-            ui.label(title).classes("text-sm text-gray-500")
-            ui.html(value).classes("text-2xl font-bold")
-            ui.label(subtitle or "").classes("text-sm text-gray-500")
-
 
 def aging_bucket(row) -> str:
     if row["is_overdue_real"]:
@@ -321,13 +309,60 @@ def client_card_page(client_id: str, request: Request):
 
             return result
 
+        def get_history_kpi(history_filtered: pd.DataFrame) -> dict:
+            history_days = int(history_filtered["report_generated_date"].nunique())
+            overdue_days = int((history_filtered["overdue_debt"] > 0).sum())
+
+            avg_overdue_share = (
+                float(history_filtered["overdue_share_pct"].mean())
+                if not history_filtered.empty
+                else 0
+            )
+
+            max_days_overdue = (
+                int(history_filtered["max_days_overdue"].max())
+                if not history_filtered.empty
+                else 0
+            )
+
+            return {
+                "history_days": history_days,
+                "overdue_days": overdue_days,
+                "avg_overdue_share": avg_overdue_share,
+                "max_days_overdue": max_days_overdue,
+            }
+        
         def render_history_charts():
 
             history_filtered = get_history_filtered()
 
+            history_kpi = get_history_kpi(history_filtered)
+
             charts_container.clear()
 
             with charts_container:
+
+                ui.label("Ключевые показатели за период").classes(
+                    "text-sm text-gray-500 mb-3"
+                )
+
+                with ui.row().classes("gap-4 mb-6"):
+                    compact_kpi_card(
+                        "Дней в истории",
+                        str(history_kpi["history_days"]),
+                    )
+                    compact_kpi_card(
+                        "Дней с просрочкой",
+                        str(history_kpi["overdue_days"]),
+                    )
+                    compact_kpi_card(
+                        "Средняя просрочка",
+                        percent(history_kpi["avg_overdue_share"]),
+                    )
+                    compact_kpi_card(
+                        "Макс. дней",
+                        str(history_kpi["max_days_overdue"]),
+                    )
 
                 with ui.card().classes("w-full p-4 mb-6"):
 

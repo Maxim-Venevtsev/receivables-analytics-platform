@@ -187,3 +187,12 @@ Future frontend improvements may include:
 - top risk exposure monitoring
 - abnormal trend detection
 - executive summary insights
+
+## PHASE 2B — Behavioral Analytics
+
+- Historical KPI summary
+- Behavioral indicators
+- Rating dynamics
+- Payment behavior analysis
+- Parent organization historical trends
+- Predictive collection risk indicators

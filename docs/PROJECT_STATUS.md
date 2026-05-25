@@ -204,6 +204,17 @@ Implemented:
 - unified filtering logic across operational pages
 - reusable frontend filtering architecture
 
+## PHASE 2A — Historical Analytics Layer
+
+- Implemented client historical analytics
+- Added historical debt visualization
+- Added operational debt structure visualization
+- Added reusable Plotly chart components
+- Added reactive period filtering (28 / 90 / 180 / All)
+- Added client historical SQL view:
+  core.v_client_daily_history
+- Integrated historical analytics into client card
+
 ---
 
 # Current limitations
