@@ -6,7 +6,12 @@ from dotenv import load_dotenv
 from nicegui import ui
 from sqlalchemy import create_engine, text
 from fastapi import Request
+
 from src.app.components.rating_stars import rating_stars_html
+from src.app.components.charts import (
+    build_client_debt_history_chart,
+    build_client_debt_structure_chart,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -110,6 +115,23 @@ def client_card_page(client_id: str, request: Request):
         ui.label(f"Карточка клиента: {client_id}").classes("text-3xl font-bold mb-4")
         ui.label("Нет данных по клиенту")
         return
+
+    # === Historical data ===
+
+    history_df = query_df("""
+        SELECT
+            report_generated_date,
+            total_debt,
+            normal_debt,
+            due_soon_only,
+            due_today,
+            overdue_debt,
+            overdue_share_pct,
+            max_days_overdue
+        FROM core.v_client_daily_history
+        WHERE client_id = :client_id
+        ORDER BY report_generated_date
+    """, {"client_id": client_id})
 
     client_name = df["client_name"].iloc[0]
     client_group = df["client_group"].iloc[0]
@@ -270,6 +292,76 @@ def client_card_page(client_id: str, request: Request):
                 ).classes(
                     "w-40 text-right text-sm text-gray-600"
                 )
+
+    # === Historical analytics ===
+
+    if not history_df.empty:
+
+        selected_period = ui.toggle(
+            options=["28", "90", "180", "Все"],
+            value="28",
+        ).props("outline").classes("mb-4")
+
+        charts_container = ui.column().classes("w-full")
+
+        def get_history_filtered() -> pd.DataFrame:
+
+            result = history_df.copy()
+
+            if selected_period.value != "Все":
+
+                days = int(selected_period.value)
+
+                max_date = result["report_generated_date"].max()
+
+                result = result[
+                    result["report_generated_date"]
+                    >= max_date - pd.Timedelta(days=days)
+                ]
+
+            return result
+
+        def render_history_charts():
+
+            history_filtered = get_history_filtered()
+
+            charts_container.clear()
+
+            with charts_container:
+
+                with ui.card().classes("w-full p-4 mb-6"):
+
+                    ui.label(
+                        "История задолженности"
+                    ).classes(
+                        "text-sm text-gray-500 mb-3"
+                    )
+
+                    history_chart = build_client_debt_history_chart(
+                        history_filtered
+                    )
+
+                    ui.plotly(history_chart).classes("w-full")
+
+                with ui.card().classes("w-full p-4 mb-6"):
+
+                    ui.label(
+                        "Структура задолженности по дням"
+                    ).classes(
+                        "text-sm text-gray-500 mb-3"
+                    )
+
+                    structure_chart = build_client_debt_structure_chart(
+                        history_filtered
+                    )
+
+                    ui.plotly(structure_chart).classes("w-full")
+
+        selected_period.on_value_change(
+            lambda _: render_history_charts()
+        )
+
+        render_history_charts()
 
     # === Table ===
 
