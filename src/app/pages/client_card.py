@@ -18,6 +18,11 @@ from src.app.components.kpi_cards import (
     kpi_card,
     compact_kpi_card,
 )
+from src.app.components.behavioral_indicators import (
+    get_debt_trend_indicator,
+    get_overdue_behavior_indicator,
+    get_volatility_indicator,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -338,9 +343,61 @@ def client_card_page(client_id: str, request: Request):
 
             history_kpi = get_history_kpi(history_filtered)
 
+            debt_trend = get_debt_trend_indicator(history_filtered)
+
+            overdue_behavior = get_overdue_behavior_indicator(
+                history_filtered
+            )
+            volatility = get_volatility_indicator(history_filtered)
+
             charts_container.clear()
 
             with charts_container:
+
+                ui.label("Интерпретация периода").classes(
+                    "text-sm text-gray-500 mb-3"
+                )
+
+                with ui.row().classes("gap-3 mb-4"):
+                    with ui.card().classes("px-4 py-2"):
+                        with ui.row().classes("items-center gap-2"):
+                            ui.label(debt_trend["icon"]).classes("text-lg")
+                            ui.label(debt_trend["label"]).classes(
+                                f"text-sm font-medium text-{debt_trend['color']}-600"
+                            )
+                            ui.label(debt_trend.get("detail", "")).classes(
+                                "text-xs text-gray-500"
+                            )
+                    with ui.card().classes("px-4 py-2"):
+                        with ui.row().classes("items-center gap-2"):
+                            ui.label(overdue_behavior["icon"]).classes("text-lg")
+
+                            ui.label(
+                                overdue_behavior["label"]
+                            ).classes(
+                                f"text-sm font-medium text-{overdue_behavior['color']}-600"
+                            )
+
+                            ui.label(
+                                overdue_behavior.get("detail", "")
+                            ).classes(
+                                "text-xs text-gray-500"
+                            )
+                    with ui.card().classes("px-4 py-2"):
+                        with ui.row().classes("items-center gap-2"):
+                            ui.label(volatility["icon"]).classes("text-lg")
+
+                            ui.label(
+                                volatility["label"]
+                            ).classes(
+                                f"text-sm font-medium text-{volatility['color']}-600"
+                            )
+
+                            ui.label(
+                                volatility.get("detail", "")
+                            ).classes(
+                                "text-xs text-gray-500"
+                            )                
 
                 ui.label("Ключевые показатели за период").classes(
                     "text-sm text-gray-500 mb-3"
