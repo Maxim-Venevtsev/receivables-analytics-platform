@@ -175,3 +175,15 @@ Future frontend improvements may include:
 - advanced chart widgets
 - operational dark mode
 
+## Executive Overview Dashboard
+
+- executive-level AR portfolio overview
+- historical portfolio quality trends
+- weighted portfolio rating
+- overdue dynamics analytics
+- rating-bin exposure structure
+- concentration risk indicators
+- branch health heatmap
+- top risk exposure monitoring
+- abnormal trend detection
+- executive summary insights
