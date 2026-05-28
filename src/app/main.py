@@ -14,6 +14,7 @@ from src.app.pages.parent_org_card import parent_org_card_page
 from src.app.components.aging_bar import receivables_structure_bar
 from src.app.components.branch_filter import create_branch_filter
 from src.app.components.rating_stars import rating_aggrid_cell_renderer
+from src.app.pages.branch_card import branch_card_page
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

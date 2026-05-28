@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from urllib.parse import quote
 
 import pandas as pd
 from nicegui import ui
@@ -51,13 +52,18 @@ class BranchFilterComponent:
         on_change: Callable[[], None] | None = None,
         columns: list[dict] | None = None,
         title: str = "Филиалы",
+        enable_branch_card_link: bool = True,
     ):
         self.branches = branches
         self.selected_branches = selected_branches
         self.on_change = on_change
         self.columns = columns or DEFAULT_COLUMNS
         self.title = title
+        self.enable_branch_card_link = enable_branch_card_link
+
         self.selected_branch_label = None
+        self.branch_card_button = None
+        self.branch_card_hint = None
         self.branch_table = None
 
     def render(self) -> "BranchFilterComponent":
@@ -67,10 +73,21 @@ class BranchFilterComponent:
             self.selected_branch_label = ui.label(
                 self._selected_label_text()
             ).classes("text-sm text-gray-500")
+
             ui.button(
                 "ВСЕ ФИЛИАЛЫ",
                 on_click=self.reset,
             ).props("flat color=primary")
+
+            if self.enable_branch_card_link:
+                self.branch_card_button = ui.button(
+                    "Открыть карточку филиала",
+                    on_click=self.open_selected_branch_card,
+                ).props("unelevated color=primary").classes("hidden")
+
+                self.branch_card_hint = ui.label(
+                    "Выберите один филиал для перехода в карточку"
+                ).classes("text-xs text-gray-400")
 
         ui.label(self.title).classes("text-xl mt-6")
 
@@ -81,6 +98,8 @@ class BranchFilterComponent:
 
         self._add_slots()
         self.branch_table.on("branch_click", self.toggle)
+
+        self.update()
         return self
 
     def prepare_rows(self) -> list[dict]:
@@ -113,6 +132,8 @@ class BranchFilterComponent:
             self.branch_table.rows = self.prepare_rows()
             self.branch_table.update()
 
+        self._update_branch_card_link_state()
+
     def toggle(self, event):
         branch = event.args
 
@@ -134,10 +155,35 @@ class BranchFilterComponent:
         else:
             self.update()
 
+    def open_selected_branch_card(self):
+        if len(self.selected_branches) != 1:
+            return
+
+        branch_name = self.selected_branches[0]
+        branch_url = quote(branch_name, safe="")
+        ui.navigate.to(f"/branch/{branch_url}?from=/")
+
     def _selected_label_text(self) -> str:
         if self.selected_branches:
             return f"Фильтр: {', '.join(self.selected_branches)}"
         return "Показаны все филиалы"
+
+    def _update_branch_card_link_state(self):
+        if not self.enable_branch_card_link:
+            return
+
+        if self.branch_card_button is None or self.branch_card_hint is None:
+            return
+
+        if len(self.selected_branches) == 1:
+            self.branch_card_button.classes(remove="hidden")
+            self.branch_card_hint.classes(add="hidden")
+        else:
+            self.branch_card_button.classes(add="hidden")
+            self.branch_card_hint.classes(remove="hidden")
+
+        self.branch_card_button.update()
+        self.branch_card_hint.update()
 
     def _add_slots(self):
         self.branch_table.add_slot(
@@ -225,6 +271,7 @@ def create_branch_filter(
     on_change: Callable[[], None] | None = None,
     columns: list[dict] | None = None,
     title: str = "Филиалы",
+    enable_branch_card_link: bool = True,
 ) -> BranchFilterComponent:
     return BranchFilterComponent(
         branches=branches,
@@ -232,4 +279,5 @@ def create_branch_filter(
         on_change=on_change,
         columns=columns,
         title=title,
+        enable_branch_card_link=enable_branch_card_link,
     ).render()
