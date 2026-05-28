@@ -9,6 +9,15 @@ from sqlalchemy import create_engine, text
 
 from src.app.components.navigation import top_navigation
 from src.app.components.rating_stars import rating_stars_html
+from src.app.components.charts import (
+    build_client_debt_history_chart,
+    build_client_debt_structure_chart,
+)
+from src.app.components.behavioral_indicators import (
+    get_debt_trend_indicator,
+    get_overdue_behavior_indicator,
+    get_volatility_indicator,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -63,6 +72,28 @@ def aging_bucket(row) -> str:
     return "Не просрочено"
 
 
+def indicator_card(indicator: dict):
+    color_classes = {
+        "green": "text-green-600",
+        "orange": "text-orange-600",
+        "red": "text-red-600",
+        "blue": "text-blue-600",
+        "gray": "text-gray-600",
+    }
+
+    label_class = color_classes.get(indicator.get("color"), "text-gray-600")
+
+    with ui.card().classes("px-4 py-2"):
+        with ui.row().classes("items-center gap-2"):
+            ui.label(indicator["icon"]).classes("text-lg")
+            ui.label(indicator["label"]).classes(
+                f"text-sm font-medium {label_class}"
+            )
+            ui.label(indicator.get("detail", "")).classes(
+                "text-xs text-gray-500"
+            )
+
+
 @ui.page("/parent-org/{parent_org_id}")
 def parent_org_card_page(parent_org_id: str, request: Request):
     source_client_id = request.query_params.get("client_id")
@@ -110,6 +141,21 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         top_navigation()
         ui.label("Нет данных по этой вышестоящей организации.").classes("text-lg text-red-700")
         return
+
+    history_df = query_df("""
+        SELECT
+            report_generated_date,
+            total_debt,
+            normal_debt,
+            due_soon_only,
+            due_today,
+            overdue_debt,
+            overdue_share_pct,
+            max_days_overdue
+        FROM core.v_parent_org_daily_history
+        WHERE parent_org_id = :parent_org_id
+        ORDER BY report_generated_date
+    """, {"parent_org_id": parent_org_id})
 
     summary = (
         invoices
@@ -229,6 +275,78 @@ def parent_org_card_page(parent_org_id: str, request: Request):
                 ui.label(f"{row['amount_fmt']} · {row['share_fmt']}").classes(
                     "w-40 text-right text-sm text-gray-600"
                 )
+
+    # === Historical analytics ===
+
+    if not history_df.empty:
+
+        selected_period = ui.toggle(
+            options=["28", "90", "180", "Все"],
+            value="28",
+        ).props("outline").classes("mb-4")
+
+        charts_container = ui.column().classes("w-full")
+
+        def get_history_filtered() -> pd.DataFrame:
+            result = history_df.copy()
+
+            if selected_period.value != "Все":
+                days = int(selected_period.value)
+                max_date = result["report_generated_date"].max()
+
+                result = result[
+                    result["report_generated_date"]
+                    >= max_date - pd.Timedelta(days=days)
+                ]
+
+            return result
+
+        def render_history_charts():
+            history_filtered = get_history_filtered()
+
+            debt_trend = get_debt_trend_indicator(history_filtered)
+            overdue_behavior = get_overdue_behavior_indicator(history_filtered)
+            volatility = get_volatility_indicator(history_filtered)
+
+            charts_container.clear()
+
+            with charts_container:
+                ui.label("Интерпретация периода").classes(
+                    "text-sm text-gray-500 mb-3"
+                )
+
+                with ui.row().classes("gap-3 mb-4"):
+                    indicator_card(debt_trend)
+                    indicator_card(overdue_behavior)
+                    indicator_card(volatility)
+
+                with ui.card().classes("w-full p-4 mb-6"):
+                    ui.label("История задолженности").classes(
+                        "text-sm text-gray-500 mb-3"
+                    )
+
+                    history_chart = build_client_debt_history_chart(
+                        history_filtered
+                    )
+
+                    ui.plotly(history_chart).classes("w-full")
+
+                with ui.card().classes("w-full p-4 mb-6"):
+                    ui.label("Структура задолженности по дням").classes(
+                        "text-sm text-gray-500 mb-3"
+                    )
+
+                    structure_chart = build_client_debt_structure_chart(
+                        history_filtered
+                    )
+
+                    ui.plotly(structure_chart).classes("w-full")
+
+        selected_period.on_value_change(
+            lambda _: render_history_charts()
+        )
+
+        render_history_charts()
 
     # === Контрагенты ===
 
