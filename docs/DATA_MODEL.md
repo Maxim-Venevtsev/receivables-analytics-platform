@@ -25,6 +25,8 @@ The model is designed to support both:
 - client-level drill-down
 - parent organization aggregation
 - payment discipline rating
+- branch-level historical analytics
+- behavioral interpretation indicators
 
 ---
 
@@ -206,6 +208,43 @@ Tracks:
 
 ---
 
+
+---
+
+### `core.v_client_daily_history`
+
+Historical client-level daily aggregation.
+
+Used by the client card historical analytics layer.
+
+Key metrics:
+
+- `total_debt`
+- `normal_debt`
+- `due_soon_only`
+- `due_today`
+- `overdue_debt`
+- `overdue_share_pct`
+- `max_days_overdue`
+
+---
+
+### `core.v_parent_org_daily_history`
+
+Historical parent-organization daily aggregation.
+
+Used by the parent organization card to analyze consolidated debt behavior across linked clients.
+
+---
+
+### `core.v_branch_daily_history`
+
+Historical branch-level daily aggregation.
+
+Used by the branch card for branch-level debt trends, debt structure dynamics and behavioral indicators.
+
+---
+
 ### `core.v_parent_org_summary`
 
 Aggregates receivables by parent organization.
@@ -295,6 +334,40 @@ src/app/components/rating_stars.py
 ```
 
 This avoids duplicating rating rendering logic across pages.
+
+---
+
+
+## Behavioral analytics layer
+
+The current behavioral analytics layer is calculated from historical daily aggregation views.
+
+Current indicators:
+
+- debt trend
+- overdue behavior
+- debt volatility
+
+The indicators are rendered in:
+
+- Client card
+- Parent organization card
+- Branch card
+
+The UI uses reusable components:
+
+```text
+src/app/components/charts.py
+src/app/components/kpi_cards.py
+src/app/components/behavioral_indicators.py
+```
+
+Supported historical windows:
+
+- 28 days
+- 90 days
+- 180 days
+- all available history
 
 ---
 

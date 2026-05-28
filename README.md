@@ -97,6 +97,9 @@ SQL analytical views:
 - `v_parent_org_invoices`
 - `v_client_rating_base`
 - `v_client_rating`
+- `v_client_daily_history`
+- `v_parent_org_daily_history`
+- `v_branch_daily_history`
 
 ## Frontend
 - NiceGUI
@@ -110,6 +113,9 @@ Reusable frontend components:
 - aging_bar
 - navigation
 - rating_stars
+- charts
+- kpi_cards
+- behavioral_indicators
 
 ---
 
@@ -132,6 +138,11 @@ Reusable frontend components:
 - multi-select branch filtering
 - synchronized KPI recalculation
 - reusable frontend UI components
+
+- historical client / parent organization / branch analytics
+- reactive historical period filter: 28 / 90 / 180 / all
+- behavioral interpretation indicators
+- branch analytics card with drill-down navigation
 
 ---
 
@@ -324,6 +335,61 @@ This layer models real-world enterprise receivables workflows.
 
 ---
 
+
+---
+
+# 📈 Phase 2 — Historical Behavioral Analytics Layer
+
+Phase 2 extends the operational dashboard into a historical behavioral analytics system.
+
+Implemented capabilities:
+
+- historical debt charts for client cards
+- historical debt charts for parent organization cards
+- historical debt charts for branch cards
+- debt structure visualization by day
+- reactive period selector: 28 / 90 / 180 / all
+- reusable Plotly chart components
+- reusable KPI components
+- reusable behavioral indicator layer
+- historical KPI summaries
+- branch-card drill-down from dashboard branch filter
+
+Behavioral indicators currently include:
+
+- debt trend: growing / decreasing / stable
+- overdue behavior: absent / episodic / regular
+- volatility: stable / moderate / high
+
+Historical analytics are currently available at three hierarchy levels:
+
+```text
+Branch
+    ↓
+Parent Organization
+    ↓
+Client
+```
+
+This turns the dashboard from a current-state operational screen into a hierarchical historical receivables investigation tool.
+
+---
+
+# 🏬 Branch card
+
+Branch-level analytical profile.
+
+Features:
+
+- branch KPI overview
+- branch aging structure
+- historical debt trend
+- historical debt structure by day
+- behavioral interpretation indicators
+- client table with rating
+- invoice-level drill-down
+- navigation to client cards and parent organization cards
+
 # 🔄 Navigation workflow
 
 Dashboard
@@ -399,8 +465,8 @@ Planned features include:
 
 - payment discipline rating
 - behavioral risk analytics
-- branch cards
-- trend visualization
+- rating dynamics
+- executive overview dashboard
 - credit limit monitoring
 - CRM-like collection workflow
 - multi-currency support

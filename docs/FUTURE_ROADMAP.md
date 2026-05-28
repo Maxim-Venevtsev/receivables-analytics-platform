@@ -125,7 +125,9 @@ Future versions may include advanced payment-term analysis:
 
 ## Branch operational analytics
 
-Future versions may include branch-level operational monitoring:
+Current status: branch analytics card implemented with historical debt charts, debt structure visualization, period filtering and behavioral indicators.
+
+Future versions may include deeper branch-level operational monitoring:
 
 - branch operational scorecards
 - branch overdue benchmarking
@@ -188,11 +190,31 @@ Future frontend improvements may include:
 - abnormal trend detection
 - executive summary insights
 
-## PHASE 2B — Behavioral Analytics
 
-- Historical KPI summary
-- Behavioral indicators
+## Phase 2 completed
+
+Implemented historical analytics layer:
+
+- client historical debt analytics
+- parent organization historical debt analytics
+- branch historical debt analytics
+- reusable historical charts
+- historical KPI summaries
+- behavioral indicators
+- reactive period filtering
+- hierarchical drill-down analytics
+
+## PHASE 3 — Advanced Behavioral Risk Analytics
+
+Now that Phase 2 historical analytics is implemented, the next analytical step is advanced behavioral risk modeling.
+
+Planned features:
+
 - Rating dynamics
+- Rating trend visualization
+- Downgrade / upgrade alerts
 - Payment behavior analysis
-- Parent organization historical trends
+- Behavioral anomaly detection
 - Predictive collection risk indicators
+- Branch-level risk benchmarking
+- Parent organization risk aggregation

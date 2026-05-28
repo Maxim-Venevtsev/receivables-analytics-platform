@@ -22,6 +22,8 @@ The system already supports:
 - rating visibility across operational client tables
 - isolated work database for real-data validation
 - incremental ingestion workflow
+- historical behavioral analytics
+- branch-level operational analytics
 
 ---
 
@@ -36,6 +38,7 @@ Features:
 - receivables structure visualization
 - client prioritization
 - interactive navigation
+- branch-card navigation
 
 ---
 
@@ -91,6 +94,10 @@ Features:
 - invoice-level drill-down
 - payment urgency visualization
 - parent organization navigation
+- historical debt analytics
+- behavioral indicators
+- historical debt structure analysis
+- reactive period filtering
 
 ---
 
@@ -133,6 +140,9 @@ Current analytical views:
 - v_parent_org_invoices
 - v_client_rating_base
 - v_client_rating
+- v_client_daily_history
+- v_parent_org_daily_history
+- v_branch_daily_history
 
 ---
 
@@ -153,6 +163,9 @@ Frontend already supports:
 - synchronized aging visualization
 - reusable frontend widgets
 - unified operational filtering behavior
+- reusable Plotly analytics layer
+- reusable historical KPI components
+- reusable behavioral indicator layer
 
 ---
 
@@ -167,6 +180,8 @@ Implemented:
 - `.env`-driven ingestion configuration
 - isolated raw work directory
 - incremental ingestion workflow
+- historical behavioral analytics
+- branch-level operational analytics
 - file archive / failed-file workflow
 - latest-snapshot operational views
 
@@ -204,17 +219,26 @@ Implemented:
 - unified filtering logic across operational pages
 - reusable frontend filtering architecture
 
-## PHASE 2A — Historical Analytics Layer
+## PHASE 2 — Historical Behavioral Analytics Layer
 
-- Implemented client historical analytics
-- Added historical debt visualization
-- Added operational debt structure visualization
-- Added reusable Plotly chart components
-- Added reactive period filtering (28 / 90 / 180 / All)
-- Added client historical SQL view:
-  core.v_client_daily_history
-- Integrated historical analytics into client card
+Status: READY
 
+Implemented:
+- client historical analytics
+- parent-organization historical analytics
+- branch historical analytics
+- reusable Plotly chart components
+- operational debt structure visualization
+- reactive period filtering (28 / 90 / 180 / All)
+- behavioral interpretation indicators
+- historical KPI summaries
+- branch drill-down navigation
+- reusable frontend analytics architecture
+
+Behavioral indicators currently include:
+- debt trend analysis
+- overdue behavior analysis
+- volatility indicators
 ---
 
 # Current limitations
@@ -252,11 +276,11 @@ Further development requires:
 
 # Planned next-stage features
 
-## Operational analytics
-- branch cards
-- trend charts
-- historical debt visualization
-- rolling-period analysis
+## Advanced behavioral analytics
+- rating dynamics
+- behavioral anomaly detection
+- predictive collection risk indicators
+- payment behavior profiling
 
 ## Risk analytics
 - payment discipline rating
@@ -297,8 +321,8 @@ Current build is suitable for:
 
 # Recommended next steps
 
-1. Create sanitized demo dataset
-2. Deploy demo instance to lightweight server
-3. Gather user feedback
-4. Start daily snapshot accumulation
+1. Continue daily snapshot accumulation
+2. Validate behavioral indicators on longer history
+3. Implement rating dynamics
+4. Prepare executive overview dashboard
 5. Begin production hardening phase
