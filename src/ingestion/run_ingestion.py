@@ -53,6 +53,20 @@ def safe_move(source_path: Path, target_dir: Path) -> Path:
     shutil.move(str(source_path), str(target_path))
     return target_path
 
+def insert_client_rating_snapshot():
+    sql_path = PROJECT_ROOT / "sql" / "dml" / "insert_client_rating_snapshot.sql"
+
+    if not sql_path.exists():
+        raise FileNotFoundError(f"SQL file not found: {sql_path}")
+
+    sql = sql_path.read_text(encoding="utf-8")
+
+    engine = get_engine()
+
+    with engine.begin() as conn:
+        conn.execute(text(sql))
+
+    print("Client rating snapshot inserted")
 
 def main():
     ensure_dirs()
@@ -106,6 +120,14 @@ def main():
             print(f"Moved to failed: {failed_path}")
 
             failed_count += 1
+
+    if loaded_count > 0:
+        print("-" * 60)
+        print("Updating client rating history...")
+        insert_client_rating_snapshot()
+    else:
+        print("-" * 60)
+        print("No new files loaded; rating history was not updated")
 
     print("-" * 60)
     print("INGESTION FINISHED")
