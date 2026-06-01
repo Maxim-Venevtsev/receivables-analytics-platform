@@ -23,6 +23,9 @@ from src.app.components.behavioral_indicators import (
     get_overdue_behavior_indicator,
     get_volatility_indicator,
 )
+from src.app.components.rating_dynamics import (
+    render_client_rating_dynamics_strip,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -126,6 +129,18 @@ def client_card_page(client_id: str, request: Request):
         ORDER BY report_generated_date
     """, {"client_id": client_id})
 
+    rating_history = query_df("""
+        SELECT
+            stars,
+            previous_stars,
+            rating_delta,
+            rating_change_status,
+            snapshot_date,
+            previous_snapshot_date
+        FROM core.v_client_rating_dynamics
+        WHERE client_id = :client_id
+    """, {"client_id": client_id})
+
     client_name = df["client_name"].iloc[0]
     client_group = df["client_group"].iloc[0]
     parent_org_id = df["parent_org_id"].iloc[0]
@@ -197,6 +212,11 @@ def client_card_page(client_id: str, request: Request):
         kpi_card("% просрочки", percent(overdue_pct))
         kpi_card("Макс. дней", str(max_days))
         kpi_card("Рейтинг", rating_text, rating_subtitle)
+
+    if not rating_history.empty:
+        render_client_rating_dynamics_strip(
+            rating_history.iloc[0]
+        )
 
     # === Aging buckets ===
 

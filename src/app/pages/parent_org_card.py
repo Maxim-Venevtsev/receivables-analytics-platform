@@ -18,7 +18,9 @@ from src.app.components.behavioral_indicators import (
     get_overdue_behavior_indicator,
     get_volatility_indicator,
 )
-
+from src.app.components.rating_dynamics import (
+    render_portfolio_rating_strip,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -157,6 +159,14 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         ORDER BY report_generated_date
     """, {"parent_org_id": parent_org_id})
 
+    portfolio_rating_df = query_df("""
+        SELECT *
+        FROM core.v_parent_org_rating_dynamics
+        WHERE parent_org_id = :parent_org_id
+    """, {
+        "parent_org_id": parent_org_id
+    })
+
     summary = (
         invoices
         .groupby("parent_org_id", as_index=False)
@@ -216,6 +226,11 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         kpi_card("К оплате в ближайшие дни", money(s.due_soon_only))
         kpi_card("Просрочено", money(s.overdue_debt), f"{percent(s.overdue_share_pct)} от общего долга")
         kpi_card("Количество организаций", str(int(s.client_count)))
+
+    if not portfolio_rating_df.empty:
+        render_portfolio_rating_strip(
+            portfolio_rating_df.iloc[0]
+        )
 
     # === Aging ===
 

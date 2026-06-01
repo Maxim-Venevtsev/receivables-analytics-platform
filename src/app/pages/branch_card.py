@@ -18,7 +18,9 @@ from src.app.components.behavioral_indicators import (
     get_overdue_behavior_indicator,
     get_volatility_indicator,
 )
-
+from src.app.components.rating_dynamics import (
+    render_portfolio_rating_strip,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -153,6 +155,14 @@ def branch_card_page(branch_name: str, request: Request):
         ORDER BY report_generated_date
     """, {"branch_name": branch_name})
 
+    branch_rating_df = query_df("""
+        SELECT *
+        FROM core.v_branch_rating_dynamics
+        WHERE client_group = :branch
+    """, {
+        "branch": branch_name
+    })
+
     with ui.row().classes("mb-4"):
         ui.button("← Назад", on_click=lambda: ui.navigate.to(back_target)).props("flat color=primary")
 
@@ -169,6 +179,11 @@ def branch_card_page(branch_name: str, request: Request):
         kpi_card("К оплате в ближайшие дни", money(due_soon_only))
         kpi_card("Просрочено", money(overdue_debt), f"{percent(overdue_share_pct)} от общего долга")
         kpi_card("Клиентов", str(int(client_count)))
+    
+    if not branch_rating_df.empty:
+        render_portfolio_rating_strip(
+            branch_rating_df.iloc[0]
+        )
 
     # === Aging ===
 
