@@ -1,9 +1,3 @@
-
----
-
-## docs/PROJECT_STATUS.md
-
-```markdown
 # PROJECT STATUS
 
 ## Current stage
@@ -24,6 +18,10 @@ The system already supports:
 - incremental ingestion workflow
 - historical behavioral analytics
 - branch-level operational analytics
+- client rating history snapshots
+- client rating dynamics
+- parent-organization weighted portfolio rating
+- branch weighted portfolio rating
 
 ---
 
@@ -98,6 +96,7 @@ Features:
 - behavioral indicators
 - historical debt structure analysis
 - reactive period filtering
+- rating dynamics strip
 
 ---
 
@@ -110,6 +109,24 @@ Features:
 - cross-client analysis
 - invoice-level drill-down
 - branch filtering
+- weighted portfolio rating
+- portfolio rating dynamics
+
+---
+
+## Branch card
+Status: READY
+
+Features:
+- branch-level monitoring
+- branch KPI overview
+- branch aging structure
+- historical debt analytics
+- historical debt structure analysis
+- behavioral indicators
+- client and invoice drill-down
+- weighted portfolio rating
+- portfolio rating dynamics
 
 ---
 
@@ -140,6 +157,12 @@ Current analytical views:
 - v_parent_org_invoices
 - v_client_rating_base
 - v_client_rating
+- client_rating_history
+- v_client_rating_dynamics
+- v_client_rating_latest_dynamics
+- v_client_rating_change_events
+- v_parent_org_rating_dynamics
+- v_branch_rating_dynamics
 - v_client_daily_history
 - v_parent_org_daily_history
 - v_branch_daily_history
@@ -166,6 +189,7 @@ Frontend already supports:
 - reusable Plotly analytics layer
 - reusable historical KPI components
 - reusable behavioral indicator layer
+- reusable rating dynamics component
 
 ---
 
@@ -182,6 +206,10 @@ Implemented:
 - incremental ingestion workflow
 - historical behavioral analytics
 - branch-level operational analytics
+- client rating history snapshots
+- client rating dynamics
+- parent-organization weighted portfolio rating
+- branch weighted portfolio rating
 - file archive / failed-file workflow
 - latest-snapshot operational views
 
@@ -229,7 +257,8 @@ Implemented:
 - branch historical analytics
 - reusable Plotly chart components
 - operational debt structure visualization
-- reactive period filtering (28 / 90 / 180 / All)
+- reactive period filtering
+- rating dynamics strip (28 / 90 / 180 / All)
 - behavioral interpretation indicators
 - historical KPI summaries
 - branch drill-down navigation
@@ -239,6 +268,39 @@ Behavioral indicators currently include:
 - debt trend analysis
 - overdue behavior analysis
 - volatility indicators
+
+
+## PHASE 3.1 — Rating Dynamics Layer
+
+Status: READY
+
+Implemented:
+- client rating history table
+- automatic rating snapshot creation during ingestion
+- client rating dynamics views
+- latest client rating dynamics view
+- rating change events view
+- client card rating dynamics strip
+- parent-organization weighted portfolio rating
+- branch weighted portfolio rating
+- reusable rating dynamics frontend component
+
+This phase turns the rating engine from a current-state score into a historical behavioral monitoring layer.---
+
+# Next active milestone
+
+## Executive Overview Dashboard
+Status: IN DESIGN
+
+Planned capabilities:
+- portfolio quality overview
+- rating distribution
+- overdue dynamics
+- concentration risk analysis
+- branch health monitoring
+- executive KPI layer
+- green debt quality monitoring
+
 ---
 
 # Current limitations
@@ -277,7 +339,8 @@ Further development requires:
 # Planned next-stage features
 
 ## Advanced behavioral analytics
-- rating dynamics
+- rating trend visualization
+- downgrade / upgrade alerts
 - behavioral anomaly detection
 - predictive collection risk indicators
 - payment behavior profiling
@@ -322,7 +385,7 @@ Current build is suitable for:
 # Recommended next steps
 
 1. Continue daily snapshot accumulation
-2. Validate behavioral indicators on longer history
-3. Implement rating dynamics
-4. Prepare executive overview dashboard
+2. Validate behavioral indicators and rating dynamics on longer history
+3. Prepare executive overview dashboard
+4. Design downgrade / upgrade alert logic
 5. Begin production hardening phase

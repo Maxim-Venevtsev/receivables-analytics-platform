@@ -30,6 +30,22 @@ The model is designed to support both:
 
 ---
 
+## Historical snapshot strategy
+
+The platform intentionally stores daily receivables snapshots instead of only current-state balances.
+
+This design supports:
+
+- debt evolution analysis
+- historical KPI reconstruction
+- payment behavior analysis
+- client rating calculation
+- rating dynamics tracking
+- parent organization and branch portfolio quality monitoring
+- future forecasting capabilities
+
+---
+
 ## Core schema
 
 Main analytical objects are stored in the `core` schema.
@@ -136,6 +152,38 @@ and loaded into PostgreSQL using:
 ```bash
 python -m src.ingestion.load_rating_rules
 ```
+
+### `core.client_rating_history`
+
+Stores daily snapshots of calculated client ratings.
+
+This table is updated after successful ingestion runs and preserves the rating state at a specific snapshot date.
+
+Key fields:
+
+- `snapshot_date`
+- `client_id`
+- `client_name`
+- `parent_org_id`
+- `client_group`
+- `stars`
+- `rating_label`
+- `rating_display_label`
+- `confidence_level`
+- `snapshot_days`
+- `overdue_snapshot_days`
+- `overdue_occurrence_ratio`
+- `avg_overdue_share_pct`
+- `max_days_overdue`
+
+Purpose:
+
+- rating audit trail
+- rating dynamics
+- upgrade / downgrade detection
+- portfolio-quality aggregation
+
+---
 
 ## Analytical views
 ### `core.v_dashboard_overview`
@@ -315,6 +363,85 @@ The rating is displayed in the UI as colored stars.
 
 ---
 
+
+### `core.v_client_rating_dynamics`
+
+Historical client rating dynamics view.
+
+Tracks the relationship between current and previous rating snapshots.
+
+Key fields:
+
+- `snapshot_date`
+- `previous_snapshot_date`
+- `client_id`
+- `stars`
+- `previous_stars`
+- `rating_delta`
+- `rating_change_status`
+- `rating_change_label`
+
+---
+
+### `core.v_client_rating_latest_dynamics`
+
+Latest rating dynamics state for each client.
+
+Used by:
+
+- `Client card rating dynamics strip`
+- parent portfolio rating aggregation
+- branch portfolio rating aggregation
+
+---
+
+### `core.v_client_rating_change_events`
+
+Client rating change event view.
+
+Contains only clients whose rating has improved or worsened.
+
+Used for:
+
+- downgrade / upgrade monitoring
+- future alerting
+- executive risk summaries
+
+---
+
+### `core.v_parent_org_rating_dynamics`
+
+Weighted portfolio rating view for parent organizations.
+
+Calculates parent-organization portfolio quality using current client debt as weight.
+
+Key metrics:
+
+- `weighted_rating`
+- `clients_total`
+- `clients_with_rating`
+- `clients_improved`
+- `clients_worsened`
+- `clients_stable`
+- `clients_new`
+- `portfolio_change_status`
+- `portfolio_change_label`
+
+---
+
+### `core.v_branch_rating_dynamics`
+
+Weighted portfolio rating view for branches.
+
+Calculates branch-level portfolio quality using current client debt as weight.
+
+Used by:
+
+- Branch card
+- future Executive Overview Dashboard
+- branch benchmarking
+
+---
 ## UI integration
 
 Client rating is displayed across major operational views:
@@ -331,6 +458,12 @@ Star rendering is centralized in:
 
 ```text
 src/app/components/rating_stars.py
+```
+
+Rating dynamics and weighted portfolio rating rendering are centralized in:
+
+```text
+src/app/components/rating_dynamics.py
 ```
 
 This avoids duplicating rating rendering logic across pages.
@@ -402,7 +535,7 @@ The current model does not yet include:
 - `promised payment dates`
 - `collection action history`
 - `branch-level access control`
-- `rating history table`
-- `rating downgrade alerts`
+- `executive overview dashboard`
+- `automated rating downgrade alert workflow`
 
 These features are planned for later production hardening.

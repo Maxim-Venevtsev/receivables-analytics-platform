@@ -97,6 +97,12 @@ SQL analytical views:
 - `v_parent_org_invoices`
 - `v_client_rating_base`
 - `v_client_rating`
+- `v_client_rating_history`
+- `v_client_rating_dynamics`
+- `v_client_rating_latest_dynamics`
+- `v_client_rating_change_events`
+- `v_parent_org_rating_dynamics`
+- `v_branch_rating_dynamics`
 - `v_client_daily_history`
 - `v_parent_org_daily_history`
 - `v_branch_daily_history`
@@ -116,6 +122,7 @@ Reusable frontend components:
 - charts
 - kpi_cards
 - behavioral_indicators
+- rating_dynamics
 
 ---
 
@@ -143,6 +150,10 @@ Reusable frontend components:
 - reactive historical period filter: 28 / 90 / 180 / all
 - behavioral interpretation indicators
 - branch analytics card with drill-down navigation
+- client rating history snapshots
+- client rating dynamics strip
+- parent organization weighted portfolio rating
+- branch weighted portfolio rating
 
 ---
 
@@ -302,13 +313,16 @@ The platform includes a configurable client rating engine based on historical re
 
 Implemented capabilities:
 
-- YAML-based rating rules
+- YAML-based rating rules loaded into PostgreSQL configuration tables
 - PostgreSQL analytical rating views
 - rolling historical window logic
 - confidence levels depending on accumulated history
 - colored star rating visualization
 - reusable UI component for rating rendering
 - rating shown across client cards and operational client tables
+- automatic daily rating snapshot creation after ingestion
+- client-level rating dynamics strip
+- parent-organization and branch-level weighted portfolio rating
 
 The current rating model is designed to evolve as more daily snapshots are accumulated.
 
@@ -328,6 +342,8 @@ Features:
 - cross-client risk visibility
 - branch-level filtering
 - organization-level KPI aggregation
+- weighted portfolio rating strip
+- portfolio rating dynamics
 - consolidated aging analysis
 - consolidated invoice drill-down
 
@@ -382,6 +398,8 @@ Branch-level analytical profile.
 Features:
 
 - branch KPI overview
+- weighted portfolio rating strip
+- portfolio rating dynamics
 - branch aging structure
 - historical debt trend
 - historical debt structure by day
@@ -390,15 +408,43 @@ Features:
 - invoice-level drill-down
 - navigation to client cards and parent organization cards
 
+# 📊 Phase 3.1 — Rating Dynamics Layer
+
+Phase 3.1 adds a historical rating layer on top of the existing client payment discipline rating.
+
+Implemented capabilities:
+
+- daily client rating snapshot table
+- automatic rating snapshot creation after successful ingestion
+- client rating dynamics SQL views
+- latest rating change detection
+- rating change event view
+- compact rating dynamics strip on Client Card
+- weighted portfolio rating for Parent Organization Card
+- weighted portfolio rating for Branch Card
+- reusable rating dynamics frontend component
+
+The rating dynamics layer makes it possible to track:
+
+- rating upgrades
+- rating downgrades
+- stable clients
+- newly fixed ratings
+- branch-level and parent-organization-level portfolio quality
+
+This creates the foundation for executive portfolio monitoring, downgrade alerts and future predictive risk analytics.
+
+---
+
 # 🔄 Navigation workflow
 
 Dashboard
     ↓
-Overdue / Due Today / Due Soon / Dynamics
-    ↓
-Client Card
+Branch Card
     ↓
 Parent Organization Card
+    ↓
+Client Card
     ↓
 Invoice-level drill-down
 
@@ -465,8 +511,8 @@ Planned features include:
 
 - payment discipline rating
 - behavioral risk analytics
-- rating dynamics
 - executive overview dashboard
+- rating trend visualization
 - credit limit monitoring
 - CRM-like collection workflow
 - multi-currency support

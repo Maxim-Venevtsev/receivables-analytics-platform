@@ -7,6 +7,9 @@ Current status:
 - rating rules are stored in YAML
 - rules are loaded into PostgreSQL
 - rating is calculated from historical snapshots
+- rating history snapshots are stored after ingestion
+- rating dynamics are available for clients
+- weighted portfolio rating is available for parent organizations and branches
 - current confidence is marked as LOW until enough history is accumulated
 - rating is displayed across major operational UI tables
 
@@ -42,14 +45,24 @@ Future versions may include severity weighting for client ratings:
 
 ## Rating history and trend analysis
 
-Future versions may include rating dynamics:
+Current status:
+- client rating history table implemented
+- automatic daily rating snapshot creation implemented
+- client rating dynamics view implemented
+- latest rating dynamics view implemented
+- rating change events view implemented
+- parent-organization weighted portfolio rating implemented
+- branch weighted portfolio rating implemented
+- reusable rating dynamics UI component implemented
 
-- rating changes over time
-- downgrade / upgrade alerts
-- rating trend chart on client card
-- parent-organization-level rating aggregation
-- branch-level rating distribution
-- historical rating audit trail
+Future versions may include:
+
+- dedicated rating trend chart on client card
+- downgrade / upgrade alert queue
+- executive rating quality dashboard
+- rating migration matrix
+- branch and parent organization benchmarking
+- historical rating audit screen
 
 ## Parent organization analysis
 
@@ -136,6 +149,24 @@ Future versions may include deeper branch-level operational monitoring:
 - branch trend analysis
 - branch workload monitoring
 
+## Green debt quality monitoring
+
+Future versions may include monitoring of non-overdue debt quality.
+
+Potential capabilities:
+
+- distribution of non-overdue debt by payment terms
+- distribution by deferred payment periods
+- branch-level comparison of payment-term structure
+- historical term-shift analysis
+- abnormal payment-term extension detection
+- hidden-risk exposure monitoring
+- control of artificially preserved “green zone” debt
+
+Purpose:
+
+Detect cases where high-risk debt is kept outside overdue buckets through manual payment-term extensions or artificial due-date movement.
+
 ## Operational workflow automation
 
 Future versions may include operational automation:
@@ -210,7 +241,6 @@ Now that Phase 2 historical analytics is implemented, the next analytical step i
 
 Planned features:
 
-- Rating dynamics
 - Rating trend visualization
 - Downgrade / upgrade alerts
 - Payment behavior analysis
@@ -218,3 +248,5 @@ Planned features:
 - Predictive collection risk indicators
 - Branch-level risk benchmarking
 - Parent organization risk aggregation
+- Executive portfolio quality monitoring
+- Green debt quality monitoring
