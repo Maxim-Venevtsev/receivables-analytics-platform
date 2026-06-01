@@ -151,21 +151,89 @@ Future versions may include deeper branch-level operational monitoring:
 
 ## Green debt quality monitoring
 
-Future versions may include monitoring of non-overdue debt quality.
+Purpose:
 
-Potential capabilities:
+Detect cases where collection risk is hidden inside non-overdue debt through extended payment terms, manual due-date movement or abnormal contractual exceptions.
 
-- distribution of non-overdue debt by payment terms
-- distribution by deferred payment periods
-- branch-level comparison of payment-term structure
-- historical term-shift analysis
-- abnormal payment-term extension detection
+The objective is to identify hidden portfolio deterioration before it appears in overdue buckets.
+
+Current concept includes:
+
+### Executive-level monitoring
+
+- historical distribution of green debt by payment-term buckets:
+  - 0–30 days
+  - 31–60 days
+  - 61–90 days
+  - 91–120 days
+  - 120+ days
+
+- historical green-debt maturity trend
+- long-term green exposure indicators
+- green debt concentration risk
 - hidden-risk exposure monitoring
-- control of artificially preserved “green zone” debt
+- executive alerts for abnormal portfolio shifts
+
+### Branch-level monitoring
+
+Future Branch Card enhancements:
+
+- branch green-debt maturity structure
+- branch comparison by payment-term profile
+- branch hidden-risk score
+- branch long-term exposure indicators
+
+Additional analytical tables:
+
+- top clients with 90+ day green debt
+- top clients with 120+ day green debt
+- branch-level hidden-risk ranking
+
+### Client-level monitoring
+
+Future Client Card enhancements:
+
+- invoice payment-term visibility
+- typical client payment term calculation
+- abnormal payment-term detection
+- payment-term exception highlighting
+
+Risk signals:
+
+- payment term > typical client term
+- payment term > 60 days
+- payment term > 90 days
+- payment term > 120 days
+
+Potential visual indicators:
+
+- WARNING
+- HIGH RISK
+- CRITICAL
+
+### Historical payment-term analytics
+
+Future analytical capabilities:
+
+- historical payment-term distribution
+- payment-term drift monitoring
+- abnormal term-extension detection
+- contractual-term vs actual-term analysis
+- hidden-risk migration tracking
+
+### Hidden-risk detection logic
+
+Examples of suspicious patterns:
+
+- increasing share of 90+ day green debt
+- increasing share of 120+ day green debt
+- rapid deterioration of green-debt maturity structure
+- concentration of long-term exposure in a small number of clients
+- repeated payment-term extensions for the same client
 
 Purpose:
 
-Detect cases where high-risk debt is kept outside overdue buckets through manual payment-term extensions or artificial due-date movement.
+Detect hidden portfolio deterioration before it becomes overdue debt.
 
 ## Operational workflow automation
 
