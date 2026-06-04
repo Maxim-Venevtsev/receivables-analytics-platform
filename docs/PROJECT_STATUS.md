@@ -22,6 +22,11 @@ The system already supports:
 - client rating dynamics
 - parent-organization weighted portfolio rating
 - branch weighted portfolio rating
+- executive overview dashboard
+- executive management signal drill-down pages
+- green debt quality monitoring
+- hidden-risk client detection
+- branch executive risk profile
 
 ---
 
@@ -130,6 +135,33 @@ Features:
 
 ---
 
+
+## Executive Overview Dashboard
+Status: READY LOCALLY
+
+Features:
+- executive KPI overview
+- portfolio status / verdict
+- total debt and overdue dynamics
+- debt structure by day
+- reliable debt vs debt requiring control
+- green debt maturity structure by payment-term buckets
+- weighted average payment-term trend
+- long green exposure trend
+- rating-bin exposure analysis
+- management signal cards
+- drill-down navigation from management signals
+
+Implemented drill-down pages:
+- `/executive/long-green`
+- `/executive/overdue`
+- `/executive/branches`
+- `/executive/hidden-risk`
+
+The Executive layer is designed for company owners / senior managers and focuses on portfolio quality, hidden risk and branch-level accountability.
+
+---
+
 # Current architecture
 
 TXT / Excel
@@ -166,6 +198,17 @@ Current analytical views:
 - v_client_daily_history
 - v_parent_org_daily_history
 - v_branch_daily_history
+- v_executive_overview_kpi
+- v_executive_portfolio_daily_history
+- v_executive_green_debt_maturity_history
+- v_executive_payment_term_history
+- v_executive_long_green_exposure
+- v_executive_rating_exposure
+- v_executive_branch_health
+- v_executive_long_green_clients
+- v_executive_long_green_invoices
+- v_executive_overdue_clients
+- v_executive_hidden_risk_clients
 
 ---
 
@@ -190,6 +233,10 @@ Frontend already supports:
 - reusable historical KPI components
 - reusable behavioral indicator layer
 - reusable rating dynamics component
+- reusable executive charts
+- executive drill-down pages
+- management signal navigation
+- contextual return navigation from client and branch cards
 
 ---
 
@@ -290,16 +337,22 @@ This phase turns the rating engine from a current-state score into a historical 
 # Next active milestone
 
 ## Executive Overview Dashboard
-Status: IN DESIGN
+Status: READY LOCALLY
 
-Planned capabilities:
+Implemented capabilities:
 - portfolio quality overview
 - rating distribution
 - overdue dynamics
-- concentration risk analysis
+- green debt quality monitoring
 - branch health monitoring
 - executive KPI layer
-- green debt quality monitoring
+- management signal drill-down
+
+Next improvements:
+- term-shift detection
+- bubble matrix: rating × payment term × amount
+- branch-level green debt maturity charts
+- polishing of long-green drill-down filters
 
 ---
 
@@ -386,6 +439,7 @@ Current build is suitable for:
 
 1. Continue daily snapshot accumulation
 2. Validate behavioral indicators and rating dynamics on longer history
-3. Prepare executive overview dashboard
-4. Design downgrade / upgrade alert logic
-5. Begin production hardening phase
+3. Implement term-shift detection for manual due-date extensions
+4. Add rating × payment-term × amount bubble matrix
+5. Design downgrade / upgrade alert logic
+6. Begin production hardening phase

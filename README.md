@@ -46,6 +46,8 @@ This project transforms raw ERP exports into a structured analytical platform wi
 - upcoming payment visibility
 - historical tracking
 - parent organization aggregation
+- executive-level portfolio monitoring
+- hidden risk detection inside non-overdue receivables
 
 ---
 
@@ -106,6 +108,17 @@ SQL analytical views:
 - `v_client_daily_history`
 - `v_parent_org_daily_history`
 - `v_branch_daily_history`
+- `v_executive_overview_kpi`
+- `v_executive_portfolio_daily_history`
+- `v_executive_green_debt_maturity_history`
+- `v_executive_payment_term_history`
+- `v_executive_long_green_exposure`
+- `v_executive_rating_exposure`
+- `v_executive_branch_health`
+- `v_executive_long_green_clients`
+- `v_executive_long_green_invoices`
+- `v_executive_overdue_clients`
+- `v_executive_hidden_risk_clients`
 
 ## Frontend
 - NiceGUI
@@ -123,6 +136,7 @@ Reusable frontend components:
 - kpi_cards
 - behavioral_indicators
 - rating_dynamics
+- green_debt_maturity
 
 ---
 
@@ -154,6 +168,11 @@ Reusable frontend components:
 - client rating dynamics strip
 - parent organization weighted portfolio rating
 - branch weighted portfolio rating
+- executive overview dashboard
+- executive drill-down pages for management signals
+- green debt maturity monitoring
+- hidden-risk client detection
+- branch risk profile analysis
 
 ---
 
@@ -436,6 +455,72 @@ This creates the foundation for executive portfolio monitoring, downgrade alerts
 
 ---
 
+
+# 🧭 Executive Overview Dashboard
+
+Executive Overview adds an owner / management-level layer on top of operational receivables monitoring.
+
+It is designed to answer not only:
+
+```text
+How much is overdue?
+```
+
+but also:
+
+```text
+Where is risk hidden before it becomes overdue?
+Which branches create the risk?
+Which clients and invoices explain the signal?
+```
+
+Implemented capabilities:
+
+- executive KPI cards
+- weighted portfolio rating
+- executive portfolio status / verdict
+- historical total debt and overdue dynamics
+- operational debt structure by day
+- reliable debt vs debt requiring control
+- green debt maturity structure by payment-term buckets
+- weighted average payment-term trend
+- long green exposure trend: 90+ and 120+ non-overdue debt
+- exposure by rating segment
+- management signal cards with drill-down navigation
+
+Current management signal drill-down pages:
+
+```text
+/executive/long-green
+/executive/overdue
+/executive/branches
+/executive/hidden-risk
+```
+
+These pages provide tabular explanations of the signals and support drill-down navigation to client and branch cards.
+
+### Green debt quality logic
+
+The Executive layer separates debt into:
+
+```text
+Reliable debt =
+4–5 star clients
++ non-overdue debt
++ payment term <= 45 calendar days
+```
+
+and:
+
+```text
+Debt requiring control =
+all remaining receivables
+```
+
+This helps detect situations where risk is formally kept inside the “green zone” through unusually long payment terms.
+
+---
+
 # 🔄 Navigation workflow
 
 Dashboard
@@ -447,6 +532,12 @@ Parent Organization Card
 Client Card
     ↓
 Invoice-level drill-down
+
+Executive Overview
+    ↓
+Management Signal Drill-down
+    ↓
+Client / Branch Card
 
 ---
 
@@ -509,9 +600,10 @@ docs/FUTURE_ROADMAP.md
 
 Planned features include:
 
-- payment discipline rating
+- payment discipline rating refinement
 - behavioral risk analytics
-- executive overview dashboard
+- term-shift detection for manual payment-date changes
+- rating-term bubble matrix
 - rating trend visualization
 - credit limit monitoring
 - CRM-like collection workflow

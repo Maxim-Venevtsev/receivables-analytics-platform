@@ -27,6 +27,9 @@ The model is designed to support both:
 - payment discipline rating
 - branch-level historical analytics
 - behavioral interpretation indicators
+- executive-level portfolio risk monitoring
+- green debt quality analytics
+- hidden-risk drill-down analysis
 
 ---
 
@@ -43,6 +46,8 @@ This design supports:
 - rating dynamics tracking
 - parent organization and branch portfolio quality monitoring
 - future forecasting capabilities
+- executive risk signal reconstruction
+- payment-term drift and hidden-risk analysis
 
 ---
 
@@ -90,6 +95,11 @@ Operational flags:
 - `is_due_in_3_days`
 - `is_due_in_7_days`
 - `is_negative_document`
+
+Payment-term analytics are also derived from this table through:
+- `payment_term_days`
+- historical changes in `due_date`
+- non-overdue exposure by payment-term bucket
 
 ---
 
@@ -442,6 +452,199 @@ Used by:
 - branch benchmarking
 
 ---
+
+## Executive analytics layer
+
+Executive analytics is built on top of the snapshot fact table, client rating views and historical daily aggregations.
+
+The Executive layer is implemented in:
+
+```text
+sql/ddl/016_create_executive_overview_views.sql
+```
+
+### `core.v_executive_overview_kpi`
+
+Top-level KPI view for the Executive Overview page.
+
+Used for:
+
+- total receivables
+- overdue debt
+- due-today debt
+- 90+ non-overdue debt
+- 120+ non-overdue debt
+- weighted portfolio rating
+
+---
+
+### `core.v_executive_portfolio_daily_history`
+
+Historical portfolio-level daily aggregation.
+
+Key metrics:
+
+- `total_debt`
+- `normal_debt`
+- `due_today`
+- `due_soon_only`
+- `overdue_debt`
+- `reliable_debt`
+- `control_required_debt`
+- `overdue_share_pct`
+
+Used by Executive charts for portfolio structure and reliable/control-required debt monitoring.
+
+---
+
+### `core.v_executive_green_debt_maturity_history`
+
+Historical distribution of non-overdue debt by payment-term buckets.
+
+Current buckets:
+
+- `0–30`
+- `31–45`
+- `46–60`
+- `61–90`
+- `91–120`
+- `120+`
+
+Purpose:
+
+- detect concentration of formally non-overdue debt in long payment terms
+- monitor hidden risk inside the green zone
+- identify deterioration before it becomes overdue
+
+---
+
+### `core.v_executive_payment_term_history`
+
+Historical weighted-average payment-term view.
+
+Key metrics:
+
+- weighted average payment term across the portfolio
+- weighted average payment term for non-overdue debt
+
+Used to detect portfolio-level payment-term drift.
+
+---
+
+### `core.v_executive_long_green_exposure`
+
+Historical long green exposure view.
+
+Tracks:
+
+- 90+ non-overdue debt
+- 120+ non-overdue debt
+
+Used by Executive Overview and the Long Green drill-down page.
+
+---
+
+### `core.v_executive_rating_exposure`
+
+Aggregates receivables exposure by client rating segment.
+
+Used for rating-bin exposure analysis.
+
+---
+
+### `core.v_executive_branch_health`
+
+Branch-level executive risk profile view.
+
+Used by:
+
+- Executive Overview management signals
+- `/executive/branches`
+
+Key metrics include:
+
+- total debt
+- overdue debt
+- overdue share
+- 90+ non-overdue exposure
+- 90+ non-overdue share
+- weighted branch portfolio rating
+- rating dynamics label
+
+---
+
+### `core.v_executive_long_green_clients`
+
+Client-level aggregation for long non-overdue debt.
+
+Used by:
+
+- `/executive/long-green`
+- `/executive/hidden-risk`
+
+Key metrics:
+
+- total green debt
+- 45+ green debt
+- 60+ green debt
+- 90+ green debt
+- 120+ green debt
+- maximum payment term
+- invoice count
+
+---
+
+### `core.v_executive_long_green_invoices`
+
+Invoice-level detail view for long non-overdue debt.
+
+Used by:
+
+- `/executive/long-green`
+
+Key fields:
+
+- client
+- branch
+- rating
+- invoice date
+- due date
+- invoice amount
+- payment term in days
+- payment-term bucket
+- invoice identifiers
+
+---
+
+### `core.v_executive_overdue_clients`
+
+Client-level overdue drill-down view.
+
+Used by:
+
+- `/executive/overdue`
+
+---
+
+### `core.v_executive_hidden_risk_clients`
+
+Client-level hidden-risk view based on long non-overdue debt concentration.
+
+Used by:
+
+- `/executive/hidden-risk`
+
+Risk levels:
+
+- `WATCH`
+- `MEDIUM`
+- `HIGH`
+- `CRITICAL`
+
+The view helps identify clients that are not overdue yet but already carry suspiciously long green exposure.
+
+---
+
 ## UI integration
 
 Client rating is displayed across major operational views:
@@ -535,7 +738,7 @@ The current model does not yet include:
 - `promised payment dates`
 - `collection action history`
 - `branch-level access control`
-- `executive overview dashboard`
+- `term-shift detection for manual due-date extensions`
 - `automated rating downgrade alert workflow`
 
 These features are planned for later production hardening.

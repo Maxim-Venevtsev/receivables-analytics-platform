@@ -151,103 +151,21 @@ Future versions may include deeper branch-level operational monitoring:
 
 ## Green debt quality monitoring
 
-Purpose:
+Future versions may include monitoring of non-overdue debt quality.
 
-Detect cases where collection risk is hidden inside non-overdue debt through extended payment terms, manual due-date movement or abnormal contractual exceptions.
+Potential capabilities:
 
-The objective is to identify hidden portfolio deterioration before it appears in overdue buckets.
-
-Current concept includes:
-
-### Executive-level monitoring
-
-- historical distribution of green debt by payment-term buckets:
-  - 0–30 days
-  - 31–60 days
-  - 61–90 days
-  - 91–120 days
-  - 120+ days
-
-- historical green-debt maturity trend
-- long-term green exposure indicators
-- green debt concentration risk
+- distribution of non-overdue debt by payment terms
+- distribution by deferred payment periods
+- branch-level comparison of payment-term structure
+- historical term-shift analysis
+- abnormal payment-term extension detection
 - hidden-risk exposure monitoring
-- executive alerts for abnormal portfolio shifts
-
-## Executive Analytics
-
-- Детализация управленческих сигналов:
-  - Long Green Debt
-  - Overdue Debt
-  - Hidden Risk
-  - Branch Health
-
-- Контроль ручного изменения сроков оплаты
-  (term shift detection)
-
-- Bubble Matrix:
-  рейтинг × срок отсрочки × сумма
-
-### Branch-level monitoring
-
-Future Branch Card enhancements:
-
-- branch green-debt maturity structure
-- branch comparison by payment-term profile
-- branch hidden-risk score
-- branch long-term exposure indicators
-
-Additional analytical tables:
-
-- top clients with 90+ day green debt
-- top clients with 120+ day green debt
-- branch-level hidden-risk ranking
-
-### Client-level monitoring
-
-Future Client Card enhancements:
-
-- invoice payment-term visibility
-- typical client payment term calculation
-- abnormal payment-term detection
-- payment-term exception highlighting
-
-Risk signals:
-
-- payment term > typical client term
-- payment term > 60 days
-- payment term > 90 days
-- payment term > 120 days
-
-Potential visual indicators:
-
-- WARNING
-- HIGH RISK
-- CRITICAL
-
-### Historical payment-term analytics
-
-Future analytical capabilities:
-
-- historical payment-term distribution
-- payment-term drift monitoring
-- abnormal term-extension detection
-- contractual-term vs actual-term analysis
-- hidden-risk migration tracking
-
-### Hidden-risk detection logic
-
-Examples of suspicious patterns:
-
-- increasing share of 90+ day green debt
-- increasing share of 120+ day green debt
-- rapid deterioration of green-debt maturity structure
-- concentration of long-term exposure in a small number of clients
-- repeated payment-term extensions for the same client
+- control of artificially preserved “green zone” debt
 
 Purpose:
 
-Detect hidden portfolio deterioration before it becomes overdue debt.
+Detect cases where high-risk debt is kept outside overdue buckets through manual payment-term extensions or artificial due-date movement.
 
 ## Operational workflow automation
 
@@ -292,16 +210,40 @@ Future frontend improvements may include:
 
 ## Executive Overview Dashboard
 
+Current status:
+- executive overview page implemented
+- portfolio KPI cards implemented
+- portfolio status / verdict implemented
+- historical portfolio quality charts implemented
+- green debt maturity structure implemented
+- weighted payment-term trend implemented
+- rating-bin exposure chart implemented
+- management signal cards implemented
+- drill-down pages implemented:
+  - `/executive/long-green`
+  - `/executive/overdue`
+  - `/executive/branches`
+  - `/executive/hidden-risk`
+
+Implemented analytical focus:
 - executive-level AR portfolio overview
 - historical portfolio quality trends
 - weighted portfolio rating
 - overdue dynamics analytics
 - rating-bin exposure structure
 - concentration risk indicators
-- branch health heatmap
+- branch health monitoring
 - top risk exposure monitoring
-- abnormal trend detection
+- hidden-risk client detection
+- green debt quality monitoring
 - executive summary insights
+
+Next improvements:
+- term-shift detection for manual due-date extensions
+- bubble matrix: rating × payment term × amount
+- branch-level green debt maturity visualization
+- long-green drill-down filtering and top-client summaries
+- hidden-risk scoring refinement
 
 
 ## Phase 2 completed
