@@ -60,6 +60,16 @@ def aging_bucket(row) -> str:
 
     return "Не просрочено"
 
+def date_fmt(value) -> str:
+    if pd.isna(value):
+        return ""
+    return pd.to_datetime(value).strftime("%d.%m.%Y")
+
+
+def money_precise(value) -> str:
+    if pd.isna(value):
+        return "0,00"
+    return f"{float(value):,.2f}".replace(",", " ").replace(".", ",")
 
 @ui.page("/client/{client_id}")
 def client_card_page(client_id: str, request: Request):
@@ -68,10 +78,15 @@ def client_card_page(client_id: str, request: Request):
 
     back_routes = {
         "dashboard": "/",
+        "executive": "/executive",
         "deltas": "/deltas",
         "overdue": "/overdue",
         "due-today": "/due-today",
         "due-soon": "/due-soon",
+        "executive-long-green": "/executive/long-green",
+        "executive-overdue": "/executive/overdue",
+        "executive-hidden-risk": "/executive/hidden-risk",
+        "executive-branches": "/executive/branches",
     }
 
     back_target = back_routes.get(origin, "/")
@@ -489,7 +504,9 @@ def client_card_page(client_id: str, request: Request):
         if filter_toggle.value == "Только просроченные":
             dff = dff[dff["is_overdue_real"] == True]
 
-        dff["invoice_amount_fmt"] = dff["invoice_amount"].apply(money)
+        dff["invoice_date_fmt"] = dff["invoice_date"].apply(date_fmt)
+        dff["due_date_fmt"] = dff["due_date"].apply(date_fmt)
+        dff["invoice_amount_fmt"] = dff["invoice_amount"].apply(money_precise)
 
         dff["is_overdue_fmt"] = dff["is_overdue_real"].map({
             True: "Да",
@@ -505,11 +522,11 @@ def client_card_page(client_id: str, request: Request):
 
     table = ui.table(
         columns=[
-            {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date"},
+            {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_fmt"},
             {"name": "order_number", "label": "Номер заказа", "field": "order_number"},
             {"name": "print_invoice_number", "label": "Печ. номер накладной", "field": "print_invoice_number"},
             {"name": "analytics_type", "label": "Аналитика", "field": "analytics_type"},
-            {"name": "due_date", "label": "Оплатить до", "field": "due_date"},
+            {"name": "due_date", "label": "Оплатить до", "field": "due_date_fmt"},
             {"name": "invoice_amount_fmt", "label": "Сумма", "field": "invoice_amount_fmt", "align": "right"},
             {"name": "days_overdue_real", "label": "Просрочка (дни)", "field": "days_overdue_real", "align": "right"},
             {"name": "aging_bucket", "label": "Срок просрочки", "field": "aging_bucket", "align": "center"},

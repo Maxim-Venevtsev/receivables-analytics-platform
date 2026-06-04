@@ -174,6 +174,20 @@ Current concept includes:
 - hidden-risk exposure monitoring
 - executive alerts for abnormal portfolio shifts
 
+## Executive Analytics
+
+- Детализация управленческих сигналов:
+  - Long Green Debt
+  - Overdue Debt
+  - Hidden Risk
+  - Branch Health
+
+- Контроль ручного изменения сроков оплаты
+  (term shift detection)
+
+- Bubble Matrix:
+  рейтинг × срок отсрочки × сумма
+
 ### Branch-level monitoring
 
 Future Branch Card enhancements:

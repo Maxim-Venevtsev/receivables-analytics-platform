@@ -15,7 +15,12 @@ from src.app.components.aging_bar import receivables_structure_bar
 from src.app.components.branch_filter import create_branch_filter
 from src.app.components.rating_stars import rating_aggrid_cell_renderer
 from src.app.pages.branch_card import branch_card_page
-
+from src.app.pages.executive import executive_overview_page
+from src.app.components.navigation import top_navigation
+from src.app.pages.executive_long_green import executive_long_green_page
+from src.app.pages.executive_overdue import executive_overdue_page
+from src.app.pages.executive_branches import executive_branches_page
+from src.app.pages.executive_hidden_risk import executive_hidden_risk_page
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -191,13 +196,8 @@ def dashboard():
     ui.label("АВС — Дебиторка").classes("text-3xl font-bold mb-2")
     ui.label("Operational Receivables Monitoring Platform") \
         .classes("text-subtitle1 text-grey-7 mb-4")
-
-    with ui.row().classes("mb-4"):
-        ui.button("📊 Главная", on_click=lambda: ui.navigate.to("/")).props("flat color=primary")
-        ui.button("📈 Динамика", on_click=lambda: ui.navigate.to("/deltas")).props("flat color=primary")
-        ui.button("🔴 Просрочено", on_click=lambda: ui.navigate.to("/overdue")).props("flat color=negative")
-        ui.button("🟠 К оплате сегодня", on_click=lambda: ui.navigate.to("/due-today")).props("flat color=warning")
-        ui.button("🟡 Ближайшие 3 дня", on_click=lambda: ui.navigate.to("/due-soon")).props("flat color=warning")
+    
+    top_navigation()
 
     with ui.row().classes("gap-4"):
         initial_kpi = get_filtered_kpi_metrics()
