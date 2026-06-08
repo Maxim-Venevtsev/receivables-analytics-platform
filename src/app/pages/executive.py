@@ -134,6 +134,7 @@ def render_management_signals(
     kpi: pd.Series,
     branch_health: pd.DataFrame,
     hidden_risk: pd.DataFrame,
+    term_shift_kpi: pd.DataFrame,
 ):
     ui.label("Управленческие сигналы").classes("text-2xl font-bold mt-6 mb-1")
     ui.label(
@@ -180,6 +181,23 @@ def render_management_signals(
             f"90+ непросрочено {percent(worst['green_90_plus_share_pct'])}",
             "/executive/branches",
         )
+
+    if not term_shift_kpi.empty:
+        shift = term_shift_kpi.iloc[0]
+
+        clients_with_shifts = int(shift["clients_with_term_shifts"] or 0)
+        events = int(shift["term_shift_events_count"] or 0)
+        shifted_amount = float(shift["shifted_amount"] or 0)
+
+        if clients_with_shifts > 0:
+            render_signal_card(
+                "🟠",
+                "Обнаружены повторные переносы сроков оплаты",
+                f"{clients_with_shifts} клиентов · "
+                f"{events} событий · "
+                f"{money(shifted_amount)}",
+                "/executive/term-shifts",
+            )
 
     if green_90 <= 0 and overdue <= 0 and hidden_risk.empty and branch_health.empty:
         render_signal_card(
@@ -239,6 +257,11 @@ def executive_overview_page():
         SELECT *
         FROM core.v_executive_hidden_risk_clients
         ORDER BY green_120_plus_debt DESC, green_90_plus_debt DESC, max_payment_term_days DESC
+    """)
+
+    term_shift_kpi = query_df("""
+        SELECT *
+        FROM core.v_executive_term_shift_kpi
     """)
 
     if kpi_df.empty:
@@ -347,4 +370,5 @@ def executive_overview_page():
         kpi=kpi,
         branch_health=branch_health,
         hidden_risk=hidden_risk,
+        term_shift_kpi=term_shift_kpi,
     )

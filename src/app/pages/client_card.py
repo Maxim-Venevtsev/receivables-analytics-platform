@@ -40,6 +40,7 @@ def query_df(sql: str, params: dict = None) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(sql), conn, params=params)
 
+
 def aging_bucket(row) -> str:
     if row["is_overdue_real"]:
         days = int(row["days_overdue_real"])
@@ -60,6 +61,7 @@ def aging_bucket(row) -> str:
 
     return "Не просрочено"
 
+
 def date_fmt(value) -> str:
     if pd.isna(value):
         return ""
@@ -70,6 +72,7 @@ def money_precise(value) -> str:
     if pd.isna(value):
         return "0,00"
     return f"{float(value):,.2f}".replace(",", " ").replace(".", ",")
+
 
 @ui.page("/client/{client_id}")
 def client_card_page(client_id: str, request: Request):
@@ -87,6 +90,7 @@ def client_card_page(client_id: str, request: Request):
         "executive-overdue": "/executive/overdue",
         "executive-hidden-risk": "/executive/hidden-risk",
         "executive-branches": "/executive/branches",
+        "executive-term-shifts": "/executive/term-shifts",
     }
 
     back_target = back_routes.get(origin, "/")
@@ -102,17 +106,27 @@ def client_card_page(client_id: str, request: Request):
             i.print_invoice_number,
             i.analytics_type,
             i.due_date,
+            i.payment_term_days,
             i.invoice_amount,
             i.days_overdue_real,
             i.is_overdue_real,
             i.is_due_today,
             i.is_due_in_3_days,
 
+            COALESCE(ts.term_shift_count, 0) AS term_shift_count,
+            COALESCE(ts.current_term_delta_days, 0) AS term_shift_delta_days,
+            ts.original_payment_term_days AS original_payment_term_days,
+            ts.current_payment_term_days AS shifted_current_payment_term_days,
+
             r.stars,
             r.rating_display_label,
             r.confidence_level
 
         FROM core.v_invoice_detail i
+
+        LEFT JOIN core.v_term_shift_invoice_summary ts
+            ON i.client_id = ts.client_id
+           AND i.print_invoice_number = ts.print_invoice_number
 
         LEFT JOIN core.v_client_rating r
             ON i.client_id = r.client_id
@@ -126,6 +140,39 @@ def client_card_page(client_id: str, request: Request):
         ui.label(f"Карточка клиента: {client_id}").classes("text-3xl font-bold mb-4")
         ui.label("Нет данных по клиенту")
         return
+
+    # === Payment term baseline by analytics ===
+
+    payment_terms = df[
+        df["payment_term_days"].notna()
+    ][["analytics_type", "payment_term_days"]].copy()
+
+    payment_terms["analytics_type"] = payment_terms["analytics_type"].fillna("—")
+    payment_terms["payment_term_days"] = payment_terms["payment_term_days"].astype(int)
+
+    if not payment_terms.empty:
+        baseline_payment_term = int(payment_terms["payment_term_days"].mode().iloc[0])
+
+        baseline_by_analytics = (
+            payment_terms
+            .groupby("analytics_type")["payment_term_days"]
+            .agg(lambda s: int(s.mode().iloc[0]))
+            .to_dict()
+        )
+    else:
+        baseline_payment_term = None
+        baseline_by_analytics = {}
+
+    def get_baseline_payment_term(row) -> int | None:
+        analytics_type = row.get("analytics_type")
+
+        if pd.isna(analytics_type):
+            analytics_type = "—"
+
+        return baseline_by_analytics.get(
+            str(analytics_type),
+            baseline_payment_term,
+        )
 
     # === Historical data ===
 
@@ -371,7 +418,7 @@ def client_card_page(client_id: str, request: Request):
                 "avg_overdue_share": avg_overdue_share,
                 "max_days_overdue": max_days_overdue,
             }
-        
+
         def render_history_charts():
 
             history_filtered = get_history_filtered()
@@ -432,7 +479,7 @@ def client_card_page(client_id: str, request: Request):
                                 volatility.get("detail", "")
                             ).classes(
                                 "text-xs text-gray-500"
-                            )                
+                            )
 
                 ui.label("Ключевые показатели за период").classes(
                     "text-sm text-gray-500 mb-3"
@@ -508,6 +555,54 @@ def client_card_page(client_id: str, request: Request):
         dff["due_date_fmt"] = dff["due_date"].apply(date_fmt)
         dff["invoice_amount_fmt"] = dff["invoice_amount"].apply(money_precise)
 
+        dff["payment_term_days_fmt"] = dff["payment_term_days"].apply(
+            lambda value: "" if pd.isna(value) else str(int(value))
+        )
+
+        dff["payment_term_baseline_days"] = dff.apply(
+            get_baseline_payment_term,
+            axis=1,
+        )
+
+        dff["is_long_payment_term"] = dff["payment_term_days"].apply(
+            lambda value: False if pd.isna(value) else int(value) >= 45
+        )
+
+        dff["is_above_baseline_payment_term"] = dff.apply(
+            lambda row: (
+                False
+                if pd.isna(row["payment_term_days"])
+                or row["payment_term_baseline_days"] is None
+                else int(row["payment_term_days"]) >= int(row["payment_term_baseline_days"]) + 2
+            ),
+            axis=1,
+        )
+
+        dff["payment_term_alert_level"] = dff.apply(
+            lambda row: (
+                "critical"
+                if row["is_long_payment_term"]
+                else "warning"
+                if row["is_above_baseline_payment_term"]
+                else "normal"
+            ),
+            axis=1,
+        )
+
+        dff["term_shift_count"] = dff["term_shift_count"].fillna(0).astype(int)
+        dff["term_shift_delta_days"] = dff["term_shift_delta_days"].fillna(0).astype(int)
+
+        dff["term_shift_fmt"] = dff.apply(
+            lambda row: (
+                f"{int(row['term_shift_count'])} / +{int(row['term_shift_delta_days'])}"
+                if int(row["term_shift_count"]) > 0
+                else "—"
+            ),
+            axis=1,
+        )
+
+        dff["has_term_shift"] = dff["term_shift_count"] > 0
+
         dff["is_overdue_fmt"] = dff["is_overdue_real"].map({
             True: "Да",
             False: "Нет"
@@ -527,6 +622,8 @@ def client_card_page(client_id: str, request: Request):
             {"name": "print_invoice_number", "label": "Печ. номер накладной", "field": "print_invoice_number"},
             {"name": "analytics_type", "label": "Аналитика", "field": "analytics_type"},
             {"name": "due_date", "label": "Оплатить до", "field": "due_date_fmt"},
+            {"name": "payment_term_days", "label": "Отсрочка, дней", "field": "payment_term_days_fmt", "align": "right"},
+            {"name": "term_shift_fmt", "label": "Переносы", "field": "term_shift_fmt", "align": "center"},
             {"name": "invoice_amount_fmt", "label": "Сумма", "field": "invoice_amount_fmt", "align": "right"},
             {"name": "days_overdue_real", "label": "Просрочка (дни)", "field": "days_overdue_real", "align": "right"},
             {"name": "aging_bucket", "label": "Срок просрочки", "field": "aging_bucket", "align": "center"},
@@ -549,7 +646,31 @@ def client_card_page(client_id: str, request: Request):
                             : ''
             ">
             <q-td v-for="col in props.cols" :key="col.name" :props="props">
-                {{ col.value }}
+                <template v-if="col.name === 'payment_term_days'">
+                    <q-badge
+                        :color="
+                            props.row.payment_term_alert_level === 'critical'
+                                ? 'red'
+                                : props.row.payment_term_alert_level === 'warning'
+                                    ? 'orange'
+                                    : 'grey'
+                        "
+                        :label="col.value"
+                    />
+                </template>
+
+                <template v-else-if="col.name === 'term_shift_fmt'">
+                    <q-badge
+                        v-if="props.row.has_term_shift"
+                        color="red"
+                        :label="col.value"
+                    />
+                    <span v-else class="text-grey-6">—</span>
+                </template>
+
+                <template v-else>
+                    {{ col.value }}
+                </template>
             </q-td>
         </q-tr>
         """

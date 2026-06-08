@@ -43,6 +43,45 @@ Future versions may include severity weighting for client ratings:
 - distinguish technical overdue amounts from material collection risk
 - include overdue amount thresholds in configurable rating rules
 
+## Credit-quality rating evolution
+
+Current rating model is primarily based on overdue debt behavior.
+
+Future versions should gradually evolve from a pure overdue-based rating into a broader credit-quality rating model.
+
+Planned analytical dimensions:
+
+### Payment discipline
+
+- overdue frequency
+- overdue amount share
+- average overdue days
+- maximum overdue days
+- overdue episode count
+
+### Payment-term quality
+
+- weighted average payment term
+- maximum payment term
+- share of debt with payment terms above 45 days
+- share of debt with payment terms above 90 days
+- share of debt with payment terms above 120 days
+
+### Term-shift behavior
+
+- number of due-date extensions
+- frequency of manual due-date changes
+- average extension length
+- recurring extension patterns
+
+Target objective:
+
+Detect clients that formally remain outside overdue buckets but systematically require excessive payment terms or repeated due-date extensions.
+
+Long-term vision:
+
+Rating should represent overall credit quality rather than overdue behavior only.
+
 ## Rating history and trend analysis
 
 Current status:
@@ -135,6 +174,62 @@ Future versions may include advanced payment-term analysis:
 - client payment discipline profiling
 - historical payment-term volatility
 - operational payment-term exceptions
+
+## Invoice lifecycle analytics
+
+Future versions may include full invoice lifecycle monitoring.
+
+Potential capabilities:
+
+- original due date tracking
+- latest due date tracking
+- due-date change history
+- payment date tracking
+- invoice closure date
+- payment-term evolution analysis
+- invoice-level risk history
+
+Derived metrics:
+
+- contractual payment term
+- actual payment term
+- delay vs original due date
+- delay vs latest due date
+- number of due-date extensions
+- cumulative extension days
+
+Purpose:
+
+Provide full transparency into how individual invoices move through the collection process and identify hidden collection risks.
+
+## Paid invoice analytics
+
+Future versions may include analysis of recently closed invoices.
+
+Potential capabilities:
+
+- last 30 days paid invoices
+- last N paid invoices
+- paid invoice history on client card
+- historical payment behavior review
+- payment pattern analysis
+
+Client-level metrics:
+
+- average contractual payment term
+- average actual payment term
+- average payment delay
+- maximum payment delay
+- percentage of invoices paid on time
+- percentage of invoices with due-date extensions
+- extension frequency
+- extension severity
+
+Purpose:
+
+Evaluate actual payment behavior rather than only currently open receivables.
+
+This analytical layer will serve as the foundation for future behavioral risk models and credit-quality ratings.
 
 ## Branch operational analytics
 
@@ -244,6 +339,12 @@ Next improvements:
 - branch-level green debt maturity visualization
 - long-green drill-down filtering and top-client summaries
 - hidden-risk scoring refinement
+- portfolio credit-quality score
+- payment-term quality monitoring
+- rating quality vs payment-term matrix
+- hidden-risk migration tracking
+- concentration of long-term green debt
+- executive client risk segmentation
 
 
 ## Phase 2 completed
@@ -274,3 +375,86 @@ Planned features:
 - Parent organization risk aggregation
 - Executive portfolio quality monitoring
 - Green debt quality monitoring
+- Credit-quality rating model
+- Invoice lifecycle analytics
+- Paid invoice behavior analytics
+- Term-shift risk scoring
+- Hidden-risk client classification
+- Effective payment behavior profiling
+
+## Credit exposure analytics
+
+Future versions may include credit exposure monitoring and credit-limit recommendations.
+
+Potential capabilities:
+
+- effective working exposure calculation
+- recommended credit limit
+- credit-limit utilization monitoring
+- abnormal shipment detection
+- exposure growth monitoring
+- concentration risk analysis
+- safe next-shipment recommendation
+
+Derived metrics:
+
+- average exposure during payment-term window
+- maximum historical exposure
+- exposure volatility
+- exposure growth rate
+- utilization percentage
+
+Purpose:
+
+Provide practical credit-control recommendations and support shipment approval decisions.
+
+## Collection efficiency analytics
+
+Future versions may include collection performance monitoring.
+
+Potential metrics:
+
+- overdue recovery rate
+- average overdue resolution time
+- overdue backlog dynamics
+- manager workload monitoring
+- action effectiveness tracking
+- promised-payment fulfillment rate
+
+Purpose:
+
+Measure operational effectiveness of collection activities.
+
+## User-defined branch groups
+
+Future versions may include reusable branch group definitions.
+
+Potential capabilities:
+
+- saved branch selections
+- personal branch groups
+- shared branch groups
+- regional management views
+- quick-filter presets
+
+Purpose:
+
+Support recurring operational and regional analysis workflows.
+
+## Data quality and governance
+
+Future versions may include automated data-quality controls.
+
+Potential capabilities:
+
+- missing due-date detection
+- invoice duplication checks
+- branch-classification validation
+- parent-organization consistency checks
+- payment-term anomaly detection
+- ingestion quality dashboard
+- data-quality scoring
+
+Purpose:
+
+Ensure analytical outputs remain trustworthy as the system scales.
