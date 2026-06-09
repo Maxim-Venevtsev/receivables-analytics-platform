@@ -127,6 +127,8 @@ def client_card_page(client_id: str, request: Request):
         LEFT JOIN core.v_term_shift_invoice_summary ts
             ON i.client_id = ts.client_id
            AND i.print_invoice_number = ts.print_invoice_number
+           AND i.order_number = ts.order_number
+           AND i.invoice_date = ts.invoice_date
 
         LEFT JOIN core.v_client_rating r
             ON i.client_id = r.client_id
@@ -140,6 +142,55 @@ def client_card_page(client_id: str, request: Request):
         ui.label(f"Карточка клиента: {client_id}").classes("text-3xl font-bold mb-4")
         ui.label("Нет данных по клиенту")
         return
+
+    # === Paid / closed invoice events ===
+
+    paid_invoices = query_df("""
+        SELECT
+            p.client_id,
+            p.client_name,
+            p.client_group,
+            p.parent_org_id,
+
+            p.print_invoice_number,
+            p.order_number,
+            p.invoice_date,
+            p.due_date,
+            p.analytics_type,
+            p.payment_term_days,
+
+            p.original_invoice_amount,
+            p.amount_before_payment,
+            p.amount_after_payment,
+            p.paid_amount_detected,
+
+            p.last_seen_snapshot,
+            p.estimated_payment_date,
+            p.payment_event_type,
+
+            p.actual_payment_term_days,
+            p.days_vs_due_date,
+            p.payment_behavior_bucket,
+
+            COALESCE(ts.term_shift_count, 0) AS term_shift_count,
+            COALESCE(ts.current_term_delta_days, 0) AS term_shift_delta_days
+
+        FROM core.v_recent_paid_invoices p
+
+        LEFT JOIN core.v_term_shift_invoice_summary ts
+            ON p.client_id = ts.client_id
+           AND p.print_invoice_number = ts.print_invoice_number
+           AND p.order_number = ts.order_number
+           AND p.invoice_date = ts.invoice_date
+
+        WHERE p.client_id = :client_id
+
+        ORDER BY
+            p.estimated_payment_date DESC,
+            p.paid_amount_detected DESC
+
+        LIMIT 20
+    """, {"client_id": client_id})
 
     # === Payment term baseline by analytics ===
 
@@ -243,14 +294,8 @@ def client_card_page(client_id: str, request: Request):
     stars_raw = df["stars"].iloc[0]
 
     if pd.notna(stars_raw):
-
         stars = int(stars_raw)
-
-        stars_raw = df["stars"].iloc[0]
-
-        stars = int(stars_raw) if pd.notna(stars_raw) else None
         rating_text = rating_stars_html(stars)
-
     else:
         rating_text = "—"
 
@@ -537,7 +582,7 @@ def client_card_page(client_id: str, request: Request):
 
         render_history_charts()
 
-    # === Table ===
+    # === Active invoices table ===
 
     filter_toggle = ui.toggle(
         options=["Все", "Только просроченные"],
@@ -630,7 +675,7 @@ def client_card_page(client_id: str, request: Request):
             {"name": "is_overdue_fmt", "label": "Просрочено", "field": "is_overdue_fmt", "align": "center"},
         ],
         rows=prepare_rows(),
-    ).classes("w-full")
+    ).classes("w-full mb-6")
 
     table.add_slot(
         "body",
@@ -681,3 +726,139 @@ def client_card_page(client_id: str, request: Request):
         table.update()
 
     filter_toggle.on_value_change(lambda _: refresh())
+
+    # === Recently paid invoices table ===
+
+    if not paid_invoices.empty:
+
+        ui.label("Последние оплаченные накладные").classes("text-xl font-bold mt-6 mb-1")
+        ui.label(
+            "Расчетная дата оплаты восстановлена по исчезновению накладной из открытой дебиторки "
+            "или по снижению открытого остатка между срезами."
+        ).classes("text-sm text-gray-500 mb-3")
+
+        def prepare_paid_rows():
+
+            dff = paid_invoices.copy()
+
+            dff["invoice_date_fmt"] = dff["invoice_date"].apply(date_fmt)
+            dff["due_date_fmt"] = dff["due_date"].apply(date_fmt)
+            dff["estimated_payment_date_fmt"] = dff["estimated_payment_date"].apply(date_fmt)
+
+            dff["paid_amount_fmt"] = dff["paid_amount_detected"].apply(money_precise)
+            dff["amount_before_payment_fmt"] = dff["amount_before_payment"].apply(money_precise)
+            dff["amount_after_payment_fmt"] = dff["amount_after_payment"].apply(money_precise)
+
+            dff["payment_term_days_fmt"] = dff["payment_term_days"].apply(
+                lambda value: "" if pd.isna(value) else str(int(value))
+            )
+
+            dff["actual_payment_term_days_fmt"] = dff["actual_payment_term_days"].apply(
+                lambda value: "" if pd.isna(value) else str(int(value))
+            )
+
+            dff["days_vs_due_date"] = dff["days_vs_due_date"].fillna(0).astype(int)
+            dff["term_shift_count"] = dff["term_shift_count"].fillna(0).astype(int)
+            dff["term_shift_delta_days"] = dff["term_shift_delta_days"].fillna(0).astype(int)
+
+            dff["term_shift_fmt"] = dff.apply(
+                lambda row: (
+                    f"{int(row['term_shift_count'])} / +{int(row['term_shift_delta_days'])}"
+                    if int(row["term_shift_count"]) > 0
+                    else "—"
+                ),
+                axis=1,
+            )
+
+            dff["has_term_shift"] = dff["term_shift_count"] > 0
+
+            dff["payment_delay_fmt"] = dff["days_vs_due_date"].apply(
+                lambda value: (
+                    "В срок"
+                    if int(value) <= 0
+                    else f"+{int(value)}"
+                )
+            )
+
+            dff["payment_delay_level"] = dff["days_vs_due_date"].apply(
+                lambda value: (
+                    "on_time"
+                    if int(value) <= 0
+                    else "small_delay"
+                    if int(value) <= 3
+                    else "delay"
+                    if int(value) <= 14
+                    else "late"
+                )
+            )
+
+            dff["payment_event_type_label"] = dff["payment_event_type"].map({
+                "FULL": "Полная",
+                "PARTIAL": "Частичная",
+            }).fillna(dff["payment_event_type"])
+
+            return dff.to_dict("records")
+
+        paid_table = ui.table(
+            columns=[
+                {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_fmt"},
+                {"name": "print_invoice_number", "label": "Печ. номер", "field": "print_invoice_number"},
+                {"name": "order_number", "label": "Номер заказа", "field": "order_number"},
+                {"name": "analytics_type", "label": "Аналитика", "field": "analytics_type"},
+                {"name": "payment_term_days", "label": "Отсрочка", "field": "payment_term_days_fmt", "align": "right"},
+                {"name": "due_date", "label": "Оплатить до", "field": "due_date_fmt"},
+                {"name": "estimated_payment_date", "label": "Расч. дата оплаты", "field": "estimated_payment_date_fmt"},
+                {"name": "actual_payment_term_days", "label": "Факт, дней", "field": "actual_payment_term_days_fmt", "align": "right"},
+                {"name": "payment_delay", "label": "Просрочка оплаты", "field": "payment_delay_fmt", "align": "center"},
+                {"name": "term_shift_fmt", "label": "Переносы", "field": "term_shift_fmt", "align": "center"},
+                {"name": "paid_amount", "label": "Оплачено", "field": "paid_amount_fmt", "align": "right"},
+                {"name": "payment_event_type", "label": "Тип", "field": "payment_event_type_label", "align": "center"},
+            ],
+            rows=prepare_paid_rows(),
+        ).classes("w-full")
+
+        paid_table.add_slot(
+            "body",
+            """
+            <q-tr :props="props">
+                <q-td v-for="col in props.cols" :key="col.name" :props="props">
+
+                    <template v-if="col.name === 'payment_delay'">
+                        <q-badge
+                            :color="
+                                props.row.payment_delay_level === 'on_time'
+                                    ? 'green'
+                                    : props.row.payment_delay_level === 'small_delay'
+                                        ? 'orange'
+                                        : props.row.payment_delay_level === 'delay'
+                                            ? 'red'
+                                            : 'dark'
+                            "
+                            :label="col.value"
+                        />
+                    </template>
+
+                    <template v-else-if="col.name === 'term_shift_fmt'">
+                        <q-badge
+                            v-if="props.row.has_term_shift"
+                            color="red"
+                            :label="col.value"
+                        />
+                        <span v-else class="text-grey-6">—</span>
+                    </template>
+
+                    <template v-else-if="col.name === 'payment_event_type'">
+                        <q-badge
+                            :color="props.row.payment_event_type === 'FULL' ? 'green' : 'blue'"
+                            :label="col.value"
+                        />
+                    </template>
+
+                    <template v-else>
+                        {{ col.value }}
+                    </template>
+
+                </q-td>
+            </q-tr>
+            """
+        )

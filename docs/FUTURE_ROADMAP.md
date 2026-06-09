@@ -177,17 +177,12 @@ Future versions may include advanced payment-term analysis:
 
 ## Invoice lifecycle analytics
 
-Future versions may include full invoice lifecycle monitoring.
-
-Potential capabilities:
-
-- original due date tracking
-- latest due date tracking
-- due-date change history
-- payment date tracking
-- invoice closure date
-- payment-term evolution analysis
-- invoice-level risk history
+Current status:
+- invoice lifecycle views implemented
+- estimated payment events detected from snapshot disappearance
+- partial payment events detected from open-balance decrease
+- active invoices are excluded from full-payment detection
+- invoice payment events are available for client-level drill-down
 
 Derived metrics:
 
@@ -204,15 +199,20 @@ Provide full transparency into how individual invoices move through the collecti
 
 ## Paid invoice analytics
 
-Future versions may include analysis of recently closed invoices.
+Current status:
+- recent payment events block implemented on Client Card
+- last 20 payment events displayed
+- full and partial payments supported
+- estimated payment date shown
+- actual payment term calculated
+- delay vs due date highlighted
+- term-shift markers shown for paid/partially paid invoices
 
-Potential capabilities:
-
-- last 30 days paid invoices
-- last N paid invoices
-- paid invoice history on client card
-- historical payment behavior review
-- payment pattern analysis
+Future improvements may include:
+- configurable period filter
+- client-level payment behavior KPIs
+- aggregation by analytics type
+- paid invoice trend chart
 
 Client-level metrics:
 
@@ -319,6 +319,7 @@ Current status:
   - `/executive/overdue`
   - `/executive/branches`
   - `/executive/hidden-risk`
+  - `/executive/term-shifts`
 
 Implemented analytical focus:
 - executive-level AR portfolio overview
@@ -332,9 +333,9 @@ Implemented analytical focus:
 - hidden-risk client detection
 - green debt quality monitoring
 - executive summary insights
+- term-shift detection for manual due-date extensions
 
 Next improvements:
-- term-shift detection for manual due-date extensions
 - bubble matrix: rating × payment term × amount
 - branch-level green debt maturity visualization
 - long-green drill-down filtering and top-client summaries
