@@ -546,7 +546,9 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         apply_filters()
 
     def open_client(event):
-        ui.navigate.to(f"/client/{event.args}?from=parent-org&parent_org_id={parent_org_id}")
+        ui.navigate.to(
+            f"/client/{event.args}?from=branch&branch_name={branch_name}"
+        )
 
     clients_table.on("branch_click", select_branch)
     clients_table.on("client_click", open_client)

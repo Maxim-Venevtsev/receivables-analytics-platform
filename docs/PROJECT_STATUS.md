@@ -153,10 +153,11 @@ Features:
 - drill-down navigation from management signals
 
 Implemented drill-down pages:
-- `/executive/long-green`
-- `/executive/overdue`
-- `/executive/branches`
-- `/executive/hidden-risk`
+- /executive/long-green
+- /executive/overdue
+- /executive/branches
+- /executive/hidden-risk
+- /executive/term-shifts
 
 The Executive layer is designed for company owners / senior managers and focuses on portfolio quality, hidden risk and branch-level accountability.
 
@@ -209,6 +210,11 @@ Current analytical views:
 - v_executive_long_green_invoices
 - v_executive_overdue_clients
 - v_executive_hidden_risk_clients
+- v_term_shift_events
+- v_term_shift_invoice_summary
+- v_executive_term_shift_clients
+- v_invoice_snapshot_lifecycle
+- v_recent_paid_invoices
 
 ---
 
@@ -334,6 +340,52 @@ Implemented:
 
 This phase turns the rating engine from a current-state score into a historical behavioral monitoring layer.---
 
+## PHASE 3.2 — Executive Risk Signals & Invoice Lifecycle
+
+Status: READY LOCALLY
+
+Implemented:
+
+### Executive management signals
+
+- long-green exposure monitoring
+- overdue exposure monitoring
+- hidden-risk client detection
+- branch health monitoring
+- payment-term extension monitoring
+- management signal drill-down navigation
+
+Implemented drill-down pages:
+
+- /executive/long-green
+- /executive/overdue
+- /executive/branches
+- /executive/hidden-risk
+- /executive/term-shifts
+
+### Invoice lifecycle analytics
+
+Implemented:
+
+- invoice lifecycle view
+- payment event detection
+- full payment detection
+- partial payment detection
+- due-date extension integration
+- actual payment-term estimation
+
+### Client payment behavior analytics
+
+Implemented:
+
+- recent payment events block
+- full and partial payment visualization
+- actual vs contractual payment-term analysis
+- delay vs due-date monitoring
+- paid-invoice term-shift indicators
+
+This phase provides the foundation for future credit-quality ratings and payment-behavior analytics.
+
 # Next active milestone
 
 ## Executive Overview Dashboard
@@ -348,11 +400,28 @@ Implemented capabilities:
 - executive KPI layer
 - management signal drill-down
 
-Next improvements:
-- term-shift detection
+Next active milestone
+
+## Credit Policy Monitoring (ARS_New / НО)
+Status: IN DESIGN
+
+Planned capabilities:
+
+- ARS_New exposure monitoring
+- НО exposure monitoring
+- client migration between analytics
+- cash-sale bypass detection
+- branch-level policy monitoring
+- parent-organization policy monitoring
+- early-stage credit-risk detection
+
+Future improvements:
+
 - bubble matrix: rating × payment term × amount
 - branch-level green debt maturity charts
-- polishing of long-green drill-down filters
+- rating v2 (credit-quality rating)
+- portfolio credit-quality score
+- production deployment
 
 ---
 

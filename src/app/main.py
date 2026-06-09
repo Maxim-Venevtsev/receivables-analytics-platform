@@ -22,6 +22,7 @@ from src.app.pages.executive_overdue import executive_overdue_page
 from src.app.pages.executive_branches import executive_branches_page
 from src.app.pages.executive_hidden_risk import executive_hidden_risk_page
 from src.app.pages.executive_term_shifts import executive_term_shifts_page
+from src.app.pages.executive_rating_migration import executive_rating_migration_page
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")

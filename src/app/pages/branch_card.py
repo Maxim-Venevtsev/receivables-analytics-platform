@@ -22,6 +22,8 @@ from src.app.components.rating_dynamics import (
     render_portfolio_rating_strip,
 )
 
+from urllib.parse import quote
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
 
@@ -475,7 +477,9 @@ def branch_card_page(branch_name: str, request: Request):
     )
 
     def open_client(event):
-        ui.navigate.to(f"/client/{event.args}?from=branch")
+        ui.navigate.to(
+            f"/client/{event.args}?from=branch&branch_name={quote(branch_name)}"
+        )
 
     def open_parent_org(event):
         ui.navigate.to(f"/parent-org/{event.args}?from=branch")

@@ -23,9 +23,10 @@ from src.app.components.behavioral_indicators import (
     get_overdue_behavior_indicator,
     get_volatility_indicator,
 )
-from src.app.components.rating_dynamics import (
-    render_client_rating_dynamics_strip,
+from src.app.components.rating_migration_strip import (
+    render_rating_migration_strip,
 )
+from urllib.parse import quote
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -79,6 +80,9 @@ def client_card_page(client_id: str, request: Request):
 
     origin = request.query_params.get("from", "dashboard")
 
+    parent_org_back_id = request.query_params.get("parent_org_id")
+    branch_back_name = request.query_params.get("branch_name")
+
     back_routes = {
         "dashboard": "/",
         "executive": "/executive",
@@ -91,9 +95,15 @@ def client_card_page(client_id: str, request: Request):
         "executive-hidden-risk": "/executive/hidden-risk",
         "executive-branches": "/executive/branches",
         "executive-term-shifts": "/executive/term-shifts",
+        "executive-rating-migration": "/executive/rating-migration",
     }
 
-    back_target = back_routes.get(origin, "/")
+    if origin == "parent-org" and parent_org_back_id:
+        back_target = f"/parent-org/{parent_org_back_id}"
+    elif origin == "branch" and branch_back_name:
+        back_target = f"/branch/{quote(branch_back_name)}"
+    else:
+        back_target = back_routes.get(origin, "/")
 
     df = query_df("""
         SELECT
@@ -242,15 +252,28 @@ def client_card_page(client_id: str, request: Request):
         ORDER BY report_generated_date
     """, {"client_id": client_id})
 
-    rating_history = query_df("""
+    rating_migration = query_df("""
         SELECT
-            stars,
-            previous_stars,
+            period_label,
+            period_days,
+            sort_order,
+            start_snapshot_date,
+            end_snapshot_date,
+            client_id,
+            client_name,
+            parent_org_id,
+            client_group,
+            start_stars,
+            end_stars,
+            start_rating_label,
+            end_rating_label,
+            start_confidence_level,
+            end_confidence_level,
             rating_delta,
-            rating_change_status,
-            snapshot_date,
-            previous_snapshot_date
-        FROM core.v_client_rating_dynamics
+            migration_status,
+            migration_label,
+            rating_change_label
+        FROM core.v_executive_rating_migration_clients
         WHERE client_id = :client_id
     """, {"client_id": client_id})
 
@@ -320,10 +343,8 @@ def client_card_page(client_id: str, request: Request):
         kpi_card("Макс. дней", str(max_days))
         kpi_card("Рейтинг", rating_text, rating_subtitle)
 
-    if not rating_history.empty:
-        render_client_rating_dynamics_strip(
-            rating_history.iloc[0]
-        )
+    # Rating migration strip is rendered together with the selected
+    # historical period below, because it depends on the active window.
 
     # === Aging buckets ===
 
@@ -424,6 +445,19 @@ def client_card_page(client_id: str, request: Request):
 
         charts_container = ui.column().classes("w-full")
 
+        def get_selected_period_label() -> str:
+            if selected_period.value == "Все":
+                return "Все"
+            return f"{selected_period.value} дней"
+
+        def get_rating_migration_for_selected_period() -> pd.DataFrame:
+            if rating_migration.empty:
+                return rating_migration
+
+            return rating_migration[
+                rating_migration["period_label"] == get_selected_period_label()
+            ]
+
         def get_history_filtered() -> pd.DataFrame:
 
             result = history_df.copy()
@@ -480,6 +514,13 @@ def client_card_page(client_id: str, request: Request):
             charts_container.clear()
 
             with charts_container:
+
+                rating_migration_selected = get_rating_migration_for_selected_period()
+
+                if not rating_migration_selected.empty:
+                    render_rating_migration_strip(
+                        rating_migration_selected.iloc[0]
+                    )
 
                 ui.label("Интерпретация периода").classes(
                     "text-sm text-gray-500 mb-3"

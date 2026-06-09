@@ -82,6 +82,65 @@ Long-term vision:
 
 Rating should represent overall credit quality rather than overdue behavior only.
 
+## Credit Policy Monitoring
+
+Current status:
+planned
+
+Business objective:
+
+Detect emerging credit-risk behavior before debt becomes overdue.
+
+Background:
+
+Some clients may gradually move from standard ARS_New shipments to cash-sale (НО) shipments after collection restrictions are triggered.
+
+Such behavior may indicate:
+
+- growing payment difficulties
+- blocked credit exposure
+- attempts to bypass shipment restrictions
+- deterioration of client credit quality
+
+Planned analytical dimensions:
+
+### Exposure monitoring
+
+- ARS_New exposure
+- НО exposure
+- ARS_New share
+- НО share
+
+### Dynamics
+
+- ARS_New growth
+- НО growth
+- migration between analytics
+- concentration changes
+
+### Client-level monitoring
+
+- clients using both ARS_New and НО
+- abnormal growth of НО shipments
+- declining ARS_New activity
+- concentration of exposure
+
+### Branch-level monitoring
+
+- branch policy compliance
+- branch comparison
+- concentration of risky clients
+
+### Parent-organization monitoring
+
+- mixed-analytics exposure
+- group-level policy violations
+- exposure migration analysis
+
+Target outcome:
+
+Shift credit control from overdue detection to early-stage credit-risk detection.
+
 ## Rating history and trend analysis
 
 Current status:
@@ -459,3 +518,40 @@ Potential capabilities:
 Purpose:
 
 Ensure analytical outputs remain trustworthy as the system scales.
+
+## Executive risk concentration analytics
+
+Current status:
+- risk bubble chart implemented
+- hidden risk bubble chart implemented
+- TOP-20 concentration bubble chart implemented
+
+Implemented analytical dimensions:
+
+### Risk bubble chart
+
+- weighted payment term
+- client rating
+- debt amount
+- overdue severity coloring
+
+### Hidden risk bubble chart
+
+- share of 90+ green debt
+- share of 120+ green debt
+- hidden-risk classification
+- debt concentration visualization
+
+### Concentration monitoring
+
+- TOP-20 largest debtors
+- portfolio concentration analysis
+- executive risk prioritization
+
+Purpose:
+
+Allow management to identify:
+- large risky exposures
+- hidden risk inside green debt
+- concentration of portfolio risk
+- clients requiring proactive credit review

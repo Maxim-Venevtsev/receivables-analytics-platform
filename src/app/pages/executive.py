@@ -16,6 +16,10 @@ from src.app.components.charts import (
     build_weighted_payment_term_chart,
     build_long_green_exposure_chart,
     build_rating_exposure_chart,
+    build_rating_migration_chart,
+    build_client_risk_bubble_chart,
+    build_top_client_risk_bubble_chart,
+    build_hidden_risk_bubble_chart,
 )
 
 
@@ -247,6 +251,24 @@ def executive_overview_page():
         ORDER BY stars NULLS LAST
     """)
 
+    rating_migration = query_df("""
+        SELECT *
+        FROM core.v_executive_rating_migration_summary
+        ORDER BY sort_order
+    """)
+
+    client_risk_bubble = query_df("""
+        SELECT *
+        FROM core.v_executive_client_risk_bubble
+        ORDER BY bubble_size DESC
+    """)
+    
+    hidden_risk_bubble = query_df("""
+        SELECT *
+        FROM core.v_executive_hidden_risk_bubble
+        ORDER BY bubble_size DESC
+    """)
+
     branch_health = query_df("""
         SELECT *
         FROM core.v_executive_branch_health
@@ -269,6 +291,20 @@ def executive_overview_page():
         return
 
     kpi = kpi_df.iloc[0]
+
+    total_portfolio_debt = float(kpi["total_debt"] or 0)
+
+    top20_debt = (
+        client_risk_bubble
+        .nlargest(20, "bubble_size")["bubble_size"]
+        .sum()
+    )
+
+    top20_share_pct = (
+        top20_debt / total_portfolio_debt * 100
+        if total_portfolio_debt > 0
+        else 0
+    )
 
     with ui.row().classes("gap-4 mb-6"):
         compact_kpi(
@@ -366,6 +402,99 @@ def executive_overview_page():
         build_rating_exposure_chart(rating_exposure),
     )
 
+    section_title(
+        "Миграция рейтингов",
+        "Изменение рейтингов клиентов за последние 28 дней.",
+    )
+
+    if not rating_migration.empty:
+
+        migration_28 = rating_migration[
+            rating_migration["period_label"] == "28 дней"
+        ]
+
+        if not migration_28.empty:
+
+            migration = migration_28.iloc[0]
+
+            with ui.row().classes("gap-4 mb-6"):
+
+                compact_kpi(
+                    "Улучшились",
+                    str(int(migration["upgraded_clients"])),
+                    "рост рейтинга",
+                    "text-green-600",
+                )
+
+                compact_kpi(
+                    "Ухудшились",
+                    str(int(migration["downgraded_clients"])),
+                    "снижение рейтинга",
+                    "text-red-600",
+                )
+
+                compact_kpi(
+                    "Без изменений",
+                    str(int(migration["unchanged_clients"])),
+                    "стабильные клиенты",
+                )
+
+                compact_kpi(
+                    "Чистая миграция",
+                    f"{int(migration['net_migration_clients']):+d}",
+                    "улучшились − ухудшились",
+                    (
+                        "text-green-600"
+                        if migration["net_migration_clients"] >= 0
+                        else "text-red-600"
+                    ),
+                )
+
+                compact_kpi(
+                    "Новые в рейтинге",
+                    str(int(migration["new_clients"])),
+                    "новые клиенты",
+                    "text-blue-600",
+                )
+
+        with ui.row().classes("mb-4"):
+            ui.button(
+                "Открыть изменения рейтингов",
+                on_click=lambda: ui.navigate.to("/executive/rating-migration"),
+            ).props("outline color=primary")
+
+        chart_card(
+            "Миграция рейтингов по периодам",
+            "Сравнение рейтингов на начало и конец периода.",
+            build_rating_migration_chart(rating_migration),
+        )
+
+    section_title(
+        "Карта клиентского риска",
+        "Визуальная карта крупных клиентов, отсрочек, рейтингов и скрытого риска.",
+    )
+
+    chart_card(
+        "Рейтинг × отсрочка × сумма долга",
+        "X — средневзвешенная отсрочка, Y — рейтинг клиента, размер пузыря — сумма долга, цвет — уровень просрочки.",
+        build_client_risk_bubble_chart(client_risk_bubble),
+    )
+
+    chart_card(
+        "TOP-20 крупнейших клиентов",
+        (
+            f"{money(top20_debt)} руб "
+            f"({top20_share_pct:.1f}% общей дебиторской задолженности)"
+        ),
+    build_top_client_risk_bubble_chart(client_risk_bubble),
+    )
+
+    chart_card(
+        "Рейтинг × длинная непросроченная задолженность",
+        "X — доля 90+ непросроченной задолженности, Y — рейтинг клиента, размер пузыря — сумма долга, цвет — уровень скрытого риска.",
+        build_hidden_risk_bubble_chart(hidden_risk_bubble),
+    )
+    
     render_management_signals(
         kpi=kpi,
         branch_health=branch_health,
