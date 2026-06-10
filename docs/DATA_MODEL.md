@@ -1,6 +1,6 @@
 # Data Model
 
-This document describes the core analytical data model of the Debt Management BI platform.
+This document describes the analytical data model of the Debt Management BI platform.
 
 ---
 
@@ -8,6 +8,7 @@ This document describes the core analytical data model of the Debt Management BI
 
 The platform follows a snapshot-based analytical model:
 
+```text
 ERP TXT / Excel export
     ↓
 Python ingestion
@@ -17,37 +18,42 @@ PostgreSQL fact tables
 SQL analytical views
     ↓
 NiceGUI operational frontend
+```
 
-The model is designed to support both:
+The model supports:
 
-- daily operational control
-- historical receivables analysis
-- client-level drill-down
-- parent organization aggregation
-- payment discipline rating
-- branch-level historical analytics
-- behavioral interpretation indicators
-- executive-level portfolio risk monitoring
-- green debt quality analytics
-- hidden-risk drill-down analysis
+- daily operational control;
+- historical receivables analysis;
+- client-level drill-down;
+- parent organization aggregation;
+- branch-level analytics;
+- base payment-discipline rating;
+- Credit Quality Rating V2;
+- rating migration analytics;
+- invoice lifecycle analytics;
+- term-shift detection;
+- executive-level portfolio risk monitoring;
+- green debt quality analytics;
+- hidden-risk detection.
 
 ---
 
 ## Historical snapshot strategy
 
-The platform intentionally stores daily receivables snapshots instead of only current-state balances.
+The platform stores daily receivables snapshots instead of only current-state balances.
 
-This design supports:
+This supports:
 
-- debt evolution analysis
-- historical KPI reconstruction
-- payment behavior analysis
-- client rating calculation
-- rating dynamics tracking
-- parent organization and branch portfolio quality monitoring
-- future forecasting capabilities
-- executive risk signal reconstruction
-- payment-term drift and hidden-risk analysis
+- debt evolution analysis;
+- historical KPI reconstruction;
+- payment behavior inference;
+- rating calculation;
+- rating dynamics tracking;
+- parent organization and branch portfolio quality monitoring;
+- payment-term drift detection;
+- invoice lifecycle reconstruction;
+- hidden-risk analysis;
+- future forecasting.
 
 ---
 
@@ -61,10 +67,9 @@ Main analytical objects are stored in the `core` schema.
 
 ### `core.receivables_snapshot_fact`
 
-Central fact table containing invoice-level receivables snapshots.
+Central invoice-level snapshot fact table.
 
-Each daily ERP export is loaded as a new snapshot.  
-The same invoice may appear across multiple dates until it is paid or disappears from the open receivables report.
+Each ERP export is loaded as a new snapshot. The same invoice can appear across multiple snapshot dates until it is paid, partially paid, written off, or disappears from the open receivables report.
 
 Typical dimensions:
 
@@ -96,29 +101,46 @@ Operational flags:
 - `is_due_in_7_days`
 - `is_negative_document`
 
-Payment-term analytics are also derived from this table through:
+Derived analytical fields:
+
 - `payment_term_days`
-- historical changes in `due_date`
-- non-overdue exposure by payment-term bucket
+- maturity buckets;
+- term-shift changes;
+- long green debt flags.
 
 ---
 
 ## Ingestion control
 
-### Incremental ingestion
+The ingestion workflow is designed to avoid duplicate loads.
 
-The ingestion workflow is designed to avoid reloading already processed files.
+Current flow:
 
-Current workflow:
+1. Read raw TXT / Excel exports from configured raw directory.
+2. Parse and normalize ERP export structure.
+3. Load new files into PostgreSQL.
+4. Skip already loaded files.
+5. Move successfully processed files to archive directory.
+6. Move failed files to failed directory.
 
-- read raw TXT exports from configured raw directory
-- parse and normalize ERP export structure
-- load new files into PostgreSQL
-- skip already loaded files
-- move successfully processed files to archive directory
-- move failed files to failed directory
+Raw, archive and failed directories are environment-driven via `.env`.
 
-The raw, archive and failed directories are environment-driven via `.env`.
+---
+
+## Environment separation
+
+Supported environments:
+
+- demo environment with synthetic / anonymized data;
+- work environment with real operational data.
+
+Sensitive paths must remain ignored:
+
+- raw real exports;
+- archived real files;
+- failed real files;
+- `.env`;
+- database credentials.
 
 ---
 
@@ -126,7 +148,7 @@ The raw, archive and failed directories are environment-driven via `.env`.
 
 ### `core.client_rating_config`
 
-Stores global configuration for the client rating engine.
+Stores global configuration for the base client rating engine.
 
 Key fields:
 
@@ -134,30 +156,19 @@ Key fields:
 - `min_full_confidence_snapshot_days`
 - `updated_at`
 
-The default target rating window is 180 calendar days.
-
----
+Default target rating window: 180 calendar days.
 
 ### `core.client_rating_rules`
 
-Stores configurable thresholds for star ratings.
+Stores configurable thresholds for base star ratings.
 
-Key fields:
-
-- `stars`
-- `label`
-- `max_overdue_occurrence_ratio`
-- `max_avg_overdue_share_pct`
-- `max_max_days_overdue`
-- `updated_at`
-
-Rating rules are maintained in:
+Maintained in:
 
 ```text
 configs/client_rating_rules.yaml
 ```
 
-and loaded into PostgreSQL using:
+Loaded using:
 
 ```bash
 python -m src.ingestion.load_rating_rules
@@ -165,77 +176,172 @@ python -m src.ingestion.load_rating_rules
 
 ### `core.client_rating_history`
 
-Stores daily snapshots of calculated client ratings.
-
-This table is updated after successful ingestion runs and preserves the rating state at a specific snapshot date.
-
-Key fields:
-
-- `snapshot_date`
-- `client_id`
-- `client_name`
-- `parent_org_id`
-- `client_group`
-- `stars`
-- `rating_label`
-- `rating_display_label`
-- `confidence_level`
-- `snapshot_days`
-- `overdue_snapshot_days`
-- `overdue_occurrence_ratio`
-- `avg_overdue_share_pct`
-- `max_days_overdue`
+Stores daily snapshots of base client ratings.
 
 Purpose:
 
-- rating audit trail
-- rating dynamics
-- upgrade / downgrade detection
-- portfolio-quality aggregation
+- rating audit trail;
+- rating dynamics;
+- upgrade / downgrade detection;
+- rating migration analytics;
+- portfolio-quality aggregation.
 
 ---
 
-## Analytical views
+## Credit Quality Rating V2
+
+Credit Quality V2 extends the base payment-discipline rating with hidden-risk and severity signals.
+
+### Core concept
+
+```text
+Base rating
+    + payment-term quality
+    + long green debt exposure
+    + term-shift behavior
+    + repeated due-date extensions
+    + exposure severity
+    = Credit Quality Rating V2
+```
+
+### Main view
+
+### `core.v_client_credit_quality_rating`
+
+Final client-level Credit Quality V2 view.
+
+Key fields:
+
+- `client_id`
+- `client_name`
+- `client_group`
+- `parent_org_id`
+- `base_stars`
+- `base_rating_label`
+- `base_rating_display_label`
+- `confidence_level`
+- `total_debt`
+- `overdue_debt`
+- `overdue_share_pct`
+- `green_debt`
+- `green_90_plus_debt`
+- `green_120_plus_debt`
+- `green_90_plus_share_pct`
+- `green_120_plus_share_pct`
+- `weighted_avg_payment_term_days`
+- `max_payment_term_days`
+- `term_shift_count`
+- `max_invoice_term_shift_count`
+- `repeated_shift_invoice_count`
+- `heavy_repeated_shift_invoice_count`
+- `total_term_shift_delta_days`
+- `max_term_shift_delta_days`
+- `exposure_segment`
+- `exposure_multiplier`
+- `raw_severity_points`
+- `weighted_severity_points`
+- `severity_level`
+- `severity_penalty`
+- `severity_reasons`
+- `credit_quality_stars`
+- `credit_quality_label`
+- `credit_quality_display_label`
+- `rating_downgraded_by_severity`
+
+### Severity dimensions
+
+Current severity dimensions:
+
+- long weighted average payment term;
+- anomalously long maximum payment term;
+- high share of 90+ non-overdue debt;
+- 120+ non-overdue debt;
+- due-date extensions;
+- repeated extensions on the same invoice;
+- repeated extensions across multiple invoices;
+- exposure size multiplier.
+
+### Supporting views / SQL files
+
+- `023_credit_quality_rating_v2.sql`
+- `024_rating_v2_term_shift_severity.sql`
+
+---
+
+## Term-shift analytics
+
+### `core.v_term_shift_events`
+
+Detects due-date extension events across invoice snapshots.
+
+### `core.v_term_shift_invoice_summary`
+
+Aggregates term shifts to invoice level.
+
+Key fields:
+
+- `client_id`
+- `print_invoice_number`
+- `order_number`
+- `invoice_date`
+- `term_shift_count`
+- `current_term_delta_days`
+- `original_payment_term_days`
+- `current_payment_term_days`
+
+Used by:
+
+- active invoice tables;
+- paid invoice tables;
+- Credit Quality V2;
+- Executive term-shift drill-down.
+
+---
+
+## Invoice lifecycle analytics
+
+### `core.v_invoice_snapshot_lifecycle`
+
+Reconstructs invoice lifecycle across snapshots.
+
+### `core.v_recent_paid_invoices`
+
+Detects recent payment events based on:
+
+- invoice disappearance from open receivables;
+- open balance decrease;
+- full payment;
+- partial payment.
+
+Used by:
+
+- Client Card;
+- Parent Organization Card;
+- Branch Card.
+
+Derived metrics:
+
+- estimated payment date;
+- actual payment-term days;
+- delay vs due date;
+- payment event type;
+- term-shift markers.
+
+---
+
+## Operational analytical views
+
 ### `core.v_dashboard_overview`
 
-Top-level dashboard KPI view.
-
-Used for:
-
-- `total debt`
-- `overdue debt`
-- `due today`
-- `due soon`
-- `client counts`
-- `branch counts`
-- `high-risk client counts`
-
----
+Top-level operational dashboard KPI view.
 
 ### `core.v_branch_summary`
 
-Aggregates receivables by branch / client group.
-
-Used for:
-
-- `branch-level debt control`
-- `overdue share by branch`
-- `branch filtering in UI`
-
----
+Branch / client-group aggregation.
 
 ### `core.v_client_priority`
 
 Operational client queue.
-
-Used for:
-
-- `client prioritization`
-- `risk category`
-- `recommended action`
-- `due today / due soon / overdue monitoring`
-
----
 
 ### `core.v_invoice_detail`
 
@@ -243,39 +349,32 @@ Invoice-level operational detail view.
 
 Used by:
 
-- `client card`
-- `parent organization card`
-- `invoice-level drill-down`
-
----
+- Client Card;
+- Parent Organization Card;
+- Branch Card;
+- invoice-level tables.
 
 ### `core.v_client_deltas`
 
-Historical client-level debt movement view.
-
-Used by the Dynamics page.
-
-Tracks:
-
-- `previous snapshot date`
-- `previous total debt`
-- `current total debt`
-- `total debt delta`
-- `overdue debt delta`
-- `debt change status`
+Client-level debt movement view for Dynamics page.
 
 ---
 
-
----
+## Historical daily views
 
 ### `core.v_client_daily_history`
 
-Historical client-level daily aggregation.
+Client-level historical aggregation.
 
-Used by the client card historical analytics layer.
+### `core.v_parent_org_daily_history`
 
-Key metrics:
+Parent organization-level historical aggregation.
+
+### `core.v_branch_daily_history`
+
+Branch-level historical aggregation.
+
+Common metrics:
 
 - `total_debt`
 - `normal_debt`
@@ -287,221 +386,91 @@ Key metrics:
 
 ---
 
-### `core.v_parent_org_daily_history`
-
-Historical parent-organization daily aggregation.
-
-Used by the parent organization card to analyze consolidated debt behavior across linked clients.
-
----
-
-### `core.v_branch_daily_history`
-
-Historical branch-level daily aggregation.
-
-Used by the branch card for branch-level debt trends, debt structure dynamics and behavioral indicators.
-
----
-
-### `core.v_parent_org_summary`
-
-Aggregates receivables by parent organization.
-
-Used by parent organization card.
-
-
----
-
-### `core.v_parent_org_clients`
-
-Aggregates receivables by client inside a parent organization.
-
-Used for cross-client visibility.
-
-
----
-
-### `core.v_parent_org_invoices`
-
-Invoice-level view scoped for parent organization analysis.
-
----
+## Base rating and rating dynamics views
 
 ### `core.v_client_rating_base`
 
-Base analytical layer for client rating.
-
-Calculated from historical snapshots within the configured rolling window.
-
-Key metrics:
-
-- `snapshot_days`
-- `overdue_snapshot_days`
-- `overdue_occurrence_ratio`
-- `avg_overdue_share_pct`
-- `max_days_overdue`
-- `avg_total_debt`
-- `total_debt_volatility`
-- `confidence_level`
-
-Confidence levels:
-
-- `LOW: insufficient history`
-- `MEDIUM: partial history`
-- `FULL: enough history for full rating confidence`
-
----
+Base analytical layer for payment-discipline rating.
 
 ### `core.v_client_rating`
 
-Final client rating view.
-
-Maps calculated client behavior metrics to configurable rating rules.
-
-Key fields:
-
-- `client_id`
-- `client_name`
-- `parent_org_id`
-- `client_group`
-- `stars`
-- `rating_label`
-- `rating_display_label`
-- `confidence_level`
-
-The rating is displayed in the UI as colored stars.
-
----
-
+Final base client rating view.
 
 ### `core.v_client_rating_dynamics`
 
-Historical client rating dynamics view.
-
-Tracks the relationship between current and previous rating snapshots.
-
-Key fields:
-
-- `snapshot_date`
-- `previous_snapshot_date`
-- `client_id`
-- `stars`
-- `previous_stars`
-- `rating_delta`
-- `rating_change_status`
-- `rating_change_label`
-
----
+Historical rating dynamics view.
 
 ### `core.v_client_rating_latest_dynamics`
 
 Latest rating dynamics state for each client.
 
-Used by:
-
-- `Client card rating dynamics strip`
-- parent portfolio rating aggregation
-- branch portfolio rating aggregation
-
----
-
 ### `core.v_client_rating_change_events`
 
-Client rating change event view.
+Only clients whose rating changed.
 
-Contains only clients whose rating has improved or worsened.
-
-Used for:
-
-- downgrade / upgrade monitoring
-- future alerting
-- executive risk summaries
+These views remain important because Credit Quality V2 uses the base rating as an input and rating migration analytics still depend on historical rating snapshots.
 
 ---
+
+## Portfolio rating views
 
 ### `core.v_parent_org_rating_dynamics`
 
-Weighted portfolio rating view for parent organizations.
+Parent-organization weighted portfolio rating.
 
-Calculates parent-organization portfolio quality using current client debt as weight.
+Current status: **switched to Credit Quality V2**.
 
-Key metrics:
+Current calculation:
+
+```sql
+SUM(credit_quality_stars * total_debt) / SUM(total_debt)
+```
+
+Key fields:
 
 - `weighted_rating`
-- `clients_total`
-- `clients_with_rating`
-- `clients_improved`
-- `clients_worsened`
-- `clients_stable`
-- `clients_new`
-- `portfolio_change_status`
-- `portfolio_change_label`
-
----
+- `base_weighted_rating`
+- `severity_portfolio_penalty`
+- `rating_method = 'credit_quality_v2'`
 
 ### `core.v_branch_rating_dynamics`
 
-Weighted portfolio rating view for branches.
+Branch weighted portfolio rating.
 
-Calculates branch-level portfolio quality using current client debt as weight.
+Current status: **switched to Credit Quality V2**.
 
-Used by:
+Current calculation:
 
-- Branch card
-- future Executive Overview Dashboard
-- branch benchmarking
+```sql
+SUM(credit_quality_stars * total_debt) / SUM(total_debt)
+```
 
 ---
 
 ## Executive analytics layer
 
-Executive analytics is built on top of the snapshot fact table, client rating views and historical daily aggregations.
-
-The Executive layer is implemented in:
-
-```text
-sql/ddl/016_create_executive_overview_views.sql
-```
-
 ### `core.v_executive_overview_kpi`
 
-Top-level KPI view for the Executive Overview page.
+Top-level Executive Overview KPI view.
+
+Current status: **weighted portfolio rating switched to Credit Quality V2**.
 
 Used for:
 
-- total receivables
-- overdue debt
-- due-today debt
-- 90+ non-overdue debt
-- 120+ non-overdue debt
-- weighted portfolio rating
-
----
+- total receivables;
+- overdue debt;
+- due-today debt;
+- 90+ non-overdue debt;
+- 120+ non-overdue debt;
+- weighted portfolio rating.
 
 ### `core.v_executive_portfolio_daily_history`
 
 Historical portfolio-level daily aggregation.
 
-Key metrics:
-
-- `total_debt`
-- `normal_debt`
-- `due_today`
-- `due_soon_only`
-- `overdue_debt`
-- `reliable_debt`
-- `control_required_debt`
-- `overdue_share_pct`
-
-Used by Executive charts for portfolio structure and reliable/control-required debt monitoring.
-
----
-
 ### `core.v_executive_green_debt_maturity_history`
 
-Historical distribution of non-overdue debt by payment-term buckets.
-
-Current buckets:
+Historical distribution of non-overdue debt by payment-term buckets:
 
 - `0–30`
 - `31–45`
@@ -510,221 +479,127 @@ Current buckets:
 - `91–120`
 - `120+`
 
-Purpose:
-
-- detect concentration of formally non-overdue debt in long payment terms
-- monitor hidden risk inside the green zone
-- identify deterioration before it becomes overdue
-
----
-
 ### `core.v_executive_payment_term_history`
 
-Historical weighted-average payment-term view.
-
-Key metrics:
-
-- weighted average payment term across the portfolio
-- weighted average payment term for non-overdue debt
-
-Used to detect portfolio-level payment-term drift.
-
----
+Weighted average payment-term trend.
 
 ### `core.v_executive_long_green_exposure`
 
-Historical long green exposure view.
+Historical long green exposure:
 
-Tracks:
-
-- 90+ non-overdue debt
-- 120+ non-overdue debt
-
-Used by Executive Overview and the Long Green drill-down page.
-
----
+- 90+ non-overdue debt;
+- 120+ non-overdue debt.
 
 ### `core.v_executive_rating_exposure`
 
-Aggregates receivables exposure by client rating segment.
+Legacy base rating exposure view.
 
-Used for rating-bin exposure analysis.
+### Credit Quality exposure query
 
----
+Executive Overview now uses `core.v_client_credit_quality_rating` directly for Credit Quality exposure distribution.
 
 ### `core.v_executive_branch_health`
 
-Branch-level executive risk profile view.
+Branch-level executive risk profile.
 
-Used by:
-
-- Executive Overview management signals
-- `/executive/branches`
-
-Key metrics include:
-
-- total debt
-- overdue debt
-- overdue share
-- 90+ non-overdue exposure
-- 90+ non-overdue share
-- weighted branch portfolio rating
-- rating dynamics label
-
----
-
-### `core.v_executive_long_green_clients`
-
-Client-level aggregation for long non-overdue debt.
-
-Used by:
-
-- `/executive/long-green`
-- `/executive/hidden-risk`
-
-Key metrics:
-
-- total green debt
-- 45+ green debt
-- 60+ green debt
-- 90+ green debt
-- 120+ green debt
-- maximum payment term
-- invoice count
-
----
-
-### `core.v_executive_long_green_invoices`
-
-Invoice-level detail view for long non-overdue debt.
-
-Used by:
-
-- `/executive/long-green`
+Current status: **weighted branch rating switched to Credit Quality V2**.
 
 Key fields:
 
-- client
-- branch
-- rating
-- invoice date
-- due date
-- invoice amount
-- payment term in days
-- payment-term bucket
-- invoice identifiers
+- `total_debt`
+- `overdue_debt`
+- `overdue_share_pct`
+- `green_90_plus_debt`
+- `green_90_plus_share_pct`
+- `green_120_plus_debt`
+- `green_120_plus_share_pct`
+- `weighted_rating`
+- `base_weighted_rating`
+- `severity_portfolio_penalty`
+- `rating_method`
 
----
+### `core.v_executive_client_risk_bubble`
+
+Executive bubble chart view.
+
+Current status: **Y-axis rating switched to `credit_quality_stars`**.
+
+Fields used by chart:
+
+- `x_payment_term_days`
+- `y_rating`
+- `bubble_size`
+- `color_group`
+
+### `core.v_executive_hidden_risk_bubble`
+
+Hidden-risk bubble chart view.
+
+Current status: **Y-axis rating switched to `credit_quality_stars`**.
+
+Fields used by chart:
+
+- `x_green_90_share_pct`
+- `y_rating`
+- `bubble_size`
+- `color_group`
+
+### `core.v_executive_long_green_clients`
+
+Client-level long green aggregation.
+
+### `core.v_executive_long_green_invoices`
+
+Invoice-level long green detail.
 
 ### `core.v_executive_overdue_clients`
 
-Client-level overdue drill-down view.
-
-Used by:
-
-- `/executive/overdue`
-
----
+Client-level overdue drill-down.
 
 ### `core.v_executive_hidden_risk_clients`
 
-Client-level hidden-risk view based on long non-overdue debt concentration.
+Client-level hidden-risk drill-down.
 
-Used by:
+### `core.v_executive_term_shift_clients`
 
-- `/executive/hidden-risk`
-
-Risk levels:
-
-- `WATCH`
-- `MEDIUM`
-- `HIGH`
-- `CRITICAL`
-
-The view helps identify clients that are not overdue yet but already carry suspiciously long green exposure.
+Term-shift drill-down.
 
 ---
 
 ## UI integration
 
-Client rating is displayed across major operational views:
-
-- `Client card`
-- `Dashboard client queue`
-- `Dynamics client changes`
-- `Overdue clients`
-- `Due today clients`
-- `Due soon clients`
-- `Parent organization counterparties`
-
-Star rendering is centralized in:
+Star rendering:
 
 ```text
 src/app/components/rating_stars.py
 ```
 
-Rating dynamics and weighted portfolio rating rendering are centralized in:
+Rating dynamics and weighted portfolio strip:
 
 ```text
 src/app/components/rating_dynamics.py
 ```
 
-This avoids duplicating rating rendering logic across pages.
+Credit Quality strip:
 
----
+```text
+src/app/components/credit_quality_strip.py
+```
 
-
-## Behavioral analytics layer
-
-The current behavioral analytics layer is calculated from historical daily aggregation views.
-
-Current indicators:
-
-- debt trend
-- overdue behavior
-- debt volatility
-
-The indicators are rendered in:
-
-- Client card
-- Parent organization card
-- Branch card
-
-The UI uses reusable components:
+Charts:
 
 ```text
 src/app/components/charts.py
-src/app/components/kpi_cards.py
-src/app/components/behavioral_indicators.py
 ```
 
-Supported historical windows:
+Credit Quality V2 is currently integrated into:
 
-- 28 days
-- 90 days
-- 180 days
-- all available history
-
----
-
-## Environment separation
-
-The platform supports separate environments:
-
-- `demo environment with synthetic / anonymized data`
-- `work environment with real operational datasets`
-
-Real datasets must not be committed to GitHub.
-
----
-
-## Sensitive paths should remain ignored:
-
-- `raw real exports`
-- `archived real files`
-- `failed real files`
-- `.env`
-- `database credentials`
+- Client Card;
+- Parent Organization Card;
+- Branch Card;
+- Executive Overview;
+- Executive Branch Health;
+- Executive bubble charts.
 
 ---
 
@@ -732,13 +607,11 @@ Real datasets must not be committed to GitHub.
 
 The current model does not yet include:
 
-- `real payment history table`
-- `credit limits`
-- `user comments`
-- `promised payment dates`
-- `collection action history`
-- `branch-level access control`
-- `term-shift detection for manual due-date extensions`
-- `automated rating downgrade alert workflow`
-
-These features are planned for later production hardening.
+- real payment history table;
+- credit limits;
+- user comments;
+- promised payment dates;
+- collection action history;
+- branch-level access control;
+- automated downgrade alert workflow;
+- scheduled production ETL.

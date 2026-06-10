@@ -1,557 +1,819 @@
 # Future Roadmap
 
-## Client payment discipline rating
+This roadmap is structured by implementation status and product layer. It is intended to guide the next development cycles after the implementation of Credit Quality Rating V2.
 
-Current status:
-- first configurable rating engine implemented
-- rating rules are stored in YAML
-- rules are loaded into PostgreSQL
-- rating is calculated from historical snapshots
-- rating history snapshots are stored after ingestion
-- rating dynamics are available for clients
-- weighted portfolio rating is available for parent organizations and branches
-- current confidence is marked as LOW until enough history is accumulated
-- rating is displayed across major operational UI tables
+Project timeline note:
 
-Future versions may include a client rating model based on historical payment behavior.
+- project initiated around **20 April 2026**;
+- active development started around **20 May 2026**;
+- Credit Quality Rating V2 was implemented in June 2026.
 
-Possible rating levels:
+---
 
-- 5 stars: no overdue debt during the period
-- 4 stars: rare technical delays of 1–2 days and low overdue share
-- 3 stars: occasional overdue payments, but generally manageable
-- 2 stars: regular overdue payments
-- 1 star: high-risk client with persistent overdue debt
+# 1. Completed / ready locally
 
-Potential metrics:
+## 1.1 Operational MVP
 
-- average overdue days
-- maximum overdue days
-- overdue frequency percentage
-- overdue amount share
-- number of overdue episodes
-- payment discipline trend
-- debt volatility
-- recurring cash gap indicators
+Status: **READY**
 
-## Rating severity weighting
+Implemented:
 
-Future versions may include severity weighting for client ratings:
-
-- reduce impact of very small overdue balances
-- increase downgrade impact for large overdue debt
-- distinguish technical overdue amounts from material collection risk
-- include overdue amount thresholds in configurable rating rules
-
-## Credit-quality rating evolution
-
-Current rating model is primarily based on overdue debt behavior.
-
-Future versions should gradually evolve from a pure overdue-based rating into a broader credit-quality rating model.
-
-Planned analytical dimensions:
-
-### Payment discipline
-
-- overdue frequency
-- overdue amount share
-- average overdue days
-- maximum overdue days
-- overdue episode count
-
-### Payment-term quality
-
-- weighted average payment term
-- maximum payment term
-- share of debt with payment terms above 45 days
-- share of debt with payment terms above 90 days
-- share of debt with payment terms above 120 days
-
-### Term-shift behavior
-
-- number of due-date extensions
-- frequency of manual due-date changes
-- average extension length
-- recurring extension patterns
-
-Target objective:
-
-Detect clients that formally remain outside overdue buckets but systematically require excessive payment terms or repeated due-date extensions.
-
-Long-term vision:
-
-Rating should represent overall credit quality rather than overdue behavior only.
-
-## Credit Policy Monitoring
-
-Current status:
-planned
-
-Business objective:
-
-Detect emerging credit-risk behavior before debt becomes overdue.
-
-Background:
-
-Some clients may gradually move from standard ARS_New shipments to cash-sale (НО) shipments after collection restrictions are triggered.
-
-Such behavior may indicate:
-
-- growing payment difficulties
-- blocked credit exposure
-- attempts to bypass shipment restrictions
-- deterioration of client credit quality
-
-Planned analytical dimensions:
-
-### Exposure monitoring
-
-- ARS_New exposure
-- НО exposure
-- ARS_New share
-- НО share
-
-### Dynamics
-
-- ARS_New growth
-- НО growth
-- migration between analytics
-- concentration changes
-
-### Client-level monitoring
-
-- clients using both ARS_New and НО
-- abnormal growth of НО shipments
-- declining ARS_New activity
-- concentration of exposure
-
-### Branch-level monitoring
-
-- branch policy compliance
-- branch comparison
-- concentration of risky clients
-
-### Parent-organization monitoring
-
-- mixed-analytics exposure
-- group-level policy violations
-- exposure migration analysis
-
-Target outcome:
-
-Shift credit control from overdue detection to early-stage credit-risk detection.
-
-## Rating history and trend analysis
-
-Current status:
-- client rating history table implemented
-- automatic daily rating snapshot creation implemented
-- client rating dynamics view implemented
-- latest rating dynamics view implemented
-- rating change events view implemented
-- parent-organization weighted portfolio rating implemented
-- branch weighted portfolio rating implemented
-- reusable rating dynamics UI component implemented
-
-Future versions may include:
-
-- dedicated rating trend chart on client card
-- downgrade / upgrade alert queue
-- executive rating quality dashboard
-- rating migration matrix
-- branch and parent organization benchmarking
-- historical rating audit screen
-
-## Parent organization analysis
-
-Future versions may include analysis by parent organization:
-
-- total debt by parent organization
-- overdue debt by parent organization
-- linked clients under the same parent organization
-- cross-client risk inside one parent structure
-
-## Cash flow forecasting
-
-Future versions may include expected incoming payments:
-
-- due today
-- due in 3 days
-- due in 7 days
-- expected payment reliability by client
-- expected vs actual payment comparison
-
-## Comments and action tracking
-
-Future versions may include a simple CRM-like workflow:
-
-- next action
-- responsible manager
-- last contact date
-- promised payment date
-- comment history
-
-## Multi-currency receivables
-
-Future versions may include multi-currency support:
-
-- separate KPI cards for RUR and EUR debt
-- currency-specific overdue amounts
-- currency-specific branch summaries
-- optional FX conversion logic
-- hiding EUR blocks when no EUR-denominated debt exists
-
-## Notification system
-
-Future versions may include operational notification workflows:
-
-- configurable email reminders
-- reminder rules based on client rating
-- payment deadline notifications
-- escalation workflows
-- operational notification queue
-- automatic reminder scheduling
-
-## Client communication layer
-
-Future versions may include operational communication tracking:
-
-- client email storage
-- manual communication notes
-- collection interaction history
-- promised payment tracking
-- next-action reminders
-- communication timeline
-
-## Payment term analytics
-
-Future versions may include advanced payment-term analysis:
-
-- effective payment term calculation
-- contractual vs actual payment behavior
-- dynamic payment term adjustments
-- client payment discipline profiling
-- historical payment-term volatility
-- operational payment-term exceptions
-
-## Invoice lifecycle analytics
-
-Current status:
-- invoice lifecycle views implemented
-- estimated payment events detected from snapshot disappearance
-- partial payment events detected from open-balance decrease
-- active invoices are excluded from full-payment detection
-- invoice payment events are available for client-level drill-down
-
-Derived metrics:
-
-- contractual payment term
-- actual payment term
-- delay vs original due date
-- delay vs latest due date
-- number of due-date extensions
-- cumulative extension days
+- dashboard KPI layer;
+- overdue monitoring;
+- due-today monitoring;
+- due-soon monitoring;
+- Dynamics page;
+- client-level drill-down;
+- branch-level drill-down;
+- parent-organization drill-down;
+- invoice-level tables;
+- reusable navigation;
+- branch filtering;
+- multi-select branch filtering.
 
 Purpose:
 
-Provide full transparency into how individual invoices move through the collection process and identify hidden collection risks.
+Provide daily operational visibility over receivables and collection priorities.
 
-## Paid invoice analytics
+---
 
-Current status:
-- recent payment events block implemented on Client Card
-- last 20 payment events displayed
-- full and partial payments supported
-- estimated payment date shown
-- actual payment term calculated
-- delay vs due date highlighted
-- term-shift markers shown for paid/partially paid invoices
+## 1.2 Historical Behavioral Analytics Layer
 
-Future improvements may include:
-- configurable period filter
-- client-level payment behavior KPIs
-- aggregation by analytics type
-- paid invoice trend chart
+Status: **READY**
 
-Client-level metrics:
+Implemented:
 
-- average contractual payment term
-- average actual payment term
-- average payment delay
-- maximum payment delay
-- percentage of invoices paid on time
-- percentage of invoices with due-date extensions
-- extension frequency
-- extension severity
+- client historical charts;
+- parent-organization historical charts;
+- branch historical charts;
+- debt structure by day;
+- 28 / 90 / 180 / All period selector;
+- behavioral indicators;
+- reusable chart components.
 
 Purpose:
 
-Evaluate actual payment behavior rather than only currently open receivables.
+Move the system from static current-state reporting to historical behavioral analysis.
 
-This analytical layer will serve as the foundation for future behavioral risk models and credit-quality ratings.
+---
 
-## Branch operational analytics
+## 1.3 Base Client Rating
 
-Current status: branch analytics card implemented with historical debt charts, debt structure visualization, period filtering and behavioral indicators.
+Status: **READY / retained as foundation**
 
-Future versions may include deeper branch-level operational monitoring:
+Implemented:
 
-- branch operational scorecards
-- branch overdue benchmarking
-- branch collection efficiency comparison
-- branch risk heatmaps
-- branch trend analysis
-- branch workload monitoring
+- YAML-driven rating rules;
+- PostgreSQL rating configuration;
+- base rating views;
+- confidence levels;
+- rating stars UI;
+- rating history snapshots;
+- rating dynamics views.
 
-## Green debt quality monitoring
+Current role:
 
-Future versions may include monitoring of non-overdue debt quality.
+The base rating remains the foundation for Credit Quality V2 and rating migration analytics.
+
+---
+
+## 1.4 Rating Dynamics Layer
+
+Status: **READY**
+
+Implemented:
+
+- client rating history;
+- automatic rating snapshots after ingestion;
+- latest rating dynamics;
+- rating change event view;
+- rating migration drill-down page;
+- rating migration chart;
+- client rating migration strip;
+- weighted parent and branch rating strips.
+
+Purpose:
+
+Track rating upgrades, downgrades, stable clients, and newly rated clients.
+
+Important note:
+
+Daily snapshot-to-snapshot movement is noisy. Current rating migration methodology compares rating at the beginning and end of selected periods.
+
+Supported periods:
+
+- 28 days;
+- 90 days;
+- 180 days;
+- all available history.
+
+---
+
+## 1.5 Invoice Lifecycle Analytics
+
+Status: **READY LOCALLY**
+
+Implemented:
+
+- invoice lifecycle view;
+- estimated payment event detection;
+- full payment detection;
+- partial payment detection;
+- active invoices excluded from false full-payment detection;
+- actual payment-term estimation;
+- delay vs due date;
+- recent paid invoices block on Client Card;
+- recent paid invoices block on Parent Organization Card;
+- recent paid invoices block on Branch Card.
+
+Purpose:
+
+Analyze how invoices actually move through the collection process, not just how open debt looks today.
+
+---
+
+## 1.6 Term-shift Detection
+
+Status: **READY LOCALLY**
+
+Implemented:
+
+- due-date extension detection;
+- invoice-level term-shift summary;
+- term-shift markers in active invoice tables;
+- term-shift markers in recent paid invoice tables;
+- executive term-shift drill-down page;
+- repeated shift detection used in Credit Quality V2.
+
+Purpose:
+
+Detect cases where risk is kept outside overdue buckets by moving due dates.
+
+---
+
+## 1.7 Executive Overview Dashboard
+
+Status: **READY LOCALLY**
+
+Implemented:
+
+- portfolio KPI cards;
+- portfolio status / verdict;
+- total debt and overdue history;
+- debt structure history;
+- reliable vs control-required debt;
+- green debt maturity chart;
+- weighted payment-term trend;
+- long green exposure trend;
+- Credit Quality exposure chart;
+- rating migration analytics;
+- management signal cards;
+- executive drill-down pages.
+
+Implemented drill-down pages:
+
+- `/executive/long-green`
+- `/executive/overdue`
+- `/executive/branches`
+- `/executive/hidden-risk`
+- `/executive/term-shifts`
+- `/executive/rating-migration`
+
+---
+
+## 1.8 Executive Risk Concentration Analytics
+
+Status: **READY LOCALLY**
+
+Implemented:
+
+### Risk bubble chart
+
+- X-axis: weighted average payment term;
+- Y-axis: Credit Quality Rating;
+- bubble size: total debt;
+- color: overdue severity.
+
+### Hidden-risk bubble chart
+
+- X-axis: share of 90+ green debt;
+- Y-axis: Credit Quality Rating;
+- bubble size: total debt;
+- color: hidden-risk level.
+
+### TOP-20 bubble chart
+
+- same axes as main risk bubble chart;
+- limited to 20 largest debtors;
+- shows concentration of exposure and risk.
+
+Purpose:
+
+Help management identify large exposures, hidden risk and portfolio concentration quickly.
+
+---
+
+## 1.9 Credit Quality Rating V2
+
+Status: **COMPLETED LOCALLY / IN VALIDATION**
+
+Implemented:
+
+- base rating input;
+- severity model;
+- long payment-term signals;
+- 90+ and 120+ non-overdue debt signals;
+- term-shift severity;
+- repeated shift severity;
+- exposure segment and multiplier;
+- `credit_quality_stars`;
+- severity reasons;
+- severity penalty;
+- Credit Quality UI strip;
+- parent-organization weighted Credit Quality rating;
+- branch weighted Credit Quality rating;
+- executive weighted portfolio Credit Quality rating;
+- Credit Quality-based bubble charts;
+- Credit Quality-based Executive Branch Health.
+
+Validation status:
+
+- model successfully surfaces clients with hidden risk;
+- model preserves high ratings for large but disciplined clients;
+- model downgrades parent organizations where the largest exposure is low-quality;
+- thresholds still require real-world observation and tuning.
+
+Next validation actions:
+
+- monitor highlighted clients for 1–2 weeks;
+- compare model output with business intuition;
+- tune YAML thresholds;
+- record false positives and false negatives.
+
+---
+
+# 2. In validation / tune next
+
+## 2.1 Credit Quality V2 threshold tuning
+
+Status: **NEXT ACTIVE ANALYTICAL TASK**
+
+Why:
+
+The model is now implemented across the main UI, but thresholds should be validated on more real snapshots.
+
+Questions to validate:
+
+- Are long non-overdue debts penalized too aggressively?
+- Are repeated shifts penalized enough?
+- Should severity depend more strongly on debt size?
+- Should small low-term clients be protected from excessive penalties?
+- Should very large clients with long terms require separate policy review rather than rating penalty?
+
+Planned actions:
+
+- collect examples by rating transition: `base_stars → credit_quality_stars`;
+- review top downgraded clients;
+- review high-debt clients with unchanged rating;
+- tune `configs/client_rating_rules.yaml`;
+- document rationale for thresholds.
+
+---
+
+## 2.2 Credit Quality Portfolio Score
+
+Status: **PARTIALLY IMPLEMENTED / NEEDS PRODUCTIZATION**
+
+Already implemented:
+
+- weighted Credit Quality rating in Executive Overview;
+- weighted parent portfolio rating;
+- weighted branch portfolio rating.
+
+Potential improvements:
+
+- historical trend of portfolio Credit Quality;
+- monthly change vs previous month;
+- split by branch;
+- split by parent organization;
+- share of debt in 1–2 star clients;
+- share of debt downgraded by severity.
+
+Potential KPI:
+
+```text
+Portfolio Credit Quality Score = weighted average Credit Quality Rating by current debt exposure
+```
+
+---
+
+## 2.3 Rating migration based on Credit Quality V2
+
+Status: **DESIGN NEEDED**
+
+Current migration analytics uses historical base rating snapshots.
+
+Potential next step:
+
+- store daily `credit_quality_stars` snapshots;
+- create Credit Quality migration matrix;
+- distinguish base rating migration from severity-driven migration;
+- detect early deterioration even before overdue debt appears.
+
+Important design question:
+
+Should Credit Quality migration replace base rating migration, or should both be shown separately?
+
+Recommended approach:
+
+- keep base rating migration as payment-discipline migration;
+- add Credit Quality migration as risk-quality migration.
+
+---
+
+# 3. Next product milestones
+
+## 3.1 Production deployment of real work environment
+
+Status: **PLANNED / HIGH PRIORITY**
+
+Goal:
+
+Deploy password-protected real-data version alongside the demo environment.
+
+Scope:
+
+- protected access;
+- server deployment;
+- environment separation;
+- scheduled ingestion;
+- logging;
+- backup strategy;
+- service restart policy;
+- data refresh workflow.
+
+Important decision:
+
+Decide whether the client receives:
+
+- trial package: data stays on client server, source code protected as much as practical;
+- full package: all scripts, documentation and pipeline logic transferred.
+
+---
+
+## 3.2 Scheduled ETL
+
+Status: **PLANNED**
+
+Goal:
+
+Automate daily ingestion.
+
+Planned capabilities:
+
+- scheduled file pickup;
+- ingestion run logging;
+- failure notifications;
+- archive / failed folder management;
+- automatic rating snapshot update;
+- automatic Credit Quality refresh;
+- dashboard refresh after ingestion.
+
+---
+
+## 3.3 Authentication and user management
+
+Status: **PLANNED**
+
+Minimum production scope:
+
+- password protection;
+- admin user;
+- read-only users;
+- session handling;
+- environment-specific credentials.
+
+Later scope:
+
+- role-based access;
+- branch-level visibility restrictions;
+- user action audit.
+
+---
+
+## 3.4 Backup and data retention
+
+Status: **PLANNED**
+
+Planned capabilities:
+
+- PostgreSQL backup schedule;
+- backup rotation;
+- restore test procedure;
+- retention policy for raw exports;
+- retention policy for database snapshots.
+
+---
+
+# 4. Credit policy and exposure analytics
+
+## 4.1 Credit Policy Monitoring: ARS_New / НО
+
+Status: **RESEARCH COMPLETED / LOW CURRENT MATERIALITY / PARKED**
+
+Research result:
+
+- current observable НО exposure is small;
+- clients with both ARS_New and НО are limited;
+- influence on current portfolio-level risk is not significant enough to prioritize immediately.
+
+Important caveat:
+
+The system can only analyze facts present in the ERP data. If not all cash shipments are registered, this remains outside the current data perimeter.
+
+Future use cases:
+
+- ARS_New exposure monitoring;
+- НО exposure monitoring;
+- mixed analytics detection;
+- branch-level policy compliance;
+- parent-organization policy monitoring;
+- early signal of credit restriction bypass.
+
+Status recommendation:
+
+Keep SQL discovery artifacts, but do not prioritize full productization until stronger business evidence appears.
+
+---
+
+## 4.2 Credit exposure and credit-limit monitoring
+
+Status: **PLANNED**
 
 Potential capabilities:
 
-- distribution of non-overdue debt by payment terms
-- distribution by deferred payment periods
-- branch-level comparison of payment-term structure
-- historical term-shift analysis
-- abnormal payment-term extension detection
-- hidden-risk exposure monitoring
-- control of artificially preserved “green zone” debt
-
-Purpose:
-
-Detect cases where high-risk debt is kept outside overdue buckets through manual payment-term extensions or artificial due-date movement.
-
-## Operational workflow automation
-
-Future versions may include operational automation:
-
-- priority queue generation
-- automatic client escalation
-- smart operational sorting
-- collection workload balancing
-- configurable operational rules
-- action recommendation engine
-
-## Real production deployment
-
-Current status:
-- isolated local work database implemented
-- demo VPS deployment implemented
-- separate work environment architecture implemented
-- production deployment preparation in progress
-
-Next planned steps:
-
-- protected production deployment
-- scheduled ETL execution
-- backup automation
-- operational logging
-- user management
-- authentication layer
-- deployment automation
-
-## Frontend architecture evolution
-
-Future frontend improvements may include:
-
-- reusable dashboard widgets
-- configurable operational layouts
-- persistent filter state
-- role-based UI customization
-- responsive mobile operational views
-- advanced chart widgets
-- operational dark mode
-
-## Executive Overview Dashboard
-
-Current status:
-- executive overview page implemented
-- portfolio KPI cards implemented
-- portfolio status / verdict implemented
-- historical portfolio quality charts implemented
-- green debt maturity structure implemented
-- weighted payment-term trend implemented
-- rating-bin exposure chart implemented
-- management signal cards implemented
-- drill-down pages implemented:
-  - `/executive/long-green`
-  - `/executive/overdue`
-  - `/executive/branches`
-  - `/executive/hidden-risk`
-  - `/executive/term-shifts`
-
-Implemented analytical focus:
-- executive-level AR portfolio overview
-- historical portfolio quality trends
-- weighted portfolio rating
-- overdue dynamics analytics
-- rating-bin exposure structure
-- concentration risk indicators
-- branch health monitoring
-- top risk exposure monitoring
-- hidden-risk client detection
-- green debt quality monitoring
-- executive summary insights
-- term-shift detection for manual due-date extensions
-
-Next improvements:
-- bubble matrix: rating × payment term × amount
-- branch-level green debt maturity visualization
-- long-green drill-down filtering and top-client summaries
-- hidden-risk scoring refinement
-- portfolio credit-quality score
-- payment-term quality monitoring
-- rating quality vs payment-term matrix
-- hidden-risk migration tracking
-- concentration of long-term green debt
-- executive client risk segmentation
-
-
-## Phase 2 completed
-
-Implemented historical analytics layer:
-
-- client historical debt analytics
-- parent organization historical debt analytics
-- branch historical debt analytics
-- reusable historical charts
-- historical KPI summaries
-- behavioral indicators
-- reactive period filtering
-- hierarchical drill-down analytics
-
-## PHASE 3 — Advanced Behavioral Risk Analytics
-
-Now that Phase 2 historical analytics is implemented, the next analytical step is advanced behavioral risk modeling.
-
-Planned features:
-
-- Rating trend visualization
-- Downgrade / upgrade alerts
-- Payment behavior analysis
-- Behavioral anomaly detection
-- Predictive collection risk indicators
-- Branch-level risk benchmarking
-- Parent organization risk aggregation
-- Executive portfolio quality monitoring
-- Green debt quality monitoring
-- Credit-quality rating model
-- Invoice lifecycle analytics
-- Paid invoice behavior analytics
-- Term-shift risk scoring
-- Hidden-risk client classification
-- Effective payment behavior profiling
-
-## Credit exposure analytics
-
-Future versions may include credit exposure monitoring and credit-limit recommendations.
-
-Potential capabilities:
-
-- effective working exposure calculation
-- recommended credit limit
-- credit-limit utilization monitoring
-- abnormal shipment detection
-- exposure growth monitoring
-- concentration risk analysis
-- safe next-shipment recommendation
-
-Derived metrics:
-
-- average exposure during payment-term window
-- maximum historical exposure
-- exposure volatility
-- exposure growth rate
-- utilization percentage
-
-Purpose:
-
-Provide practical credit-control recommendations and support shipment approval decisions.
-
-## Collection efficiency analytics
-
-Future versions may include collection performance monitoring.
+- effective working exposure;
+- recommended credit limit;
+- credit-limit utilization;
+- abnormal shipment detection;
+- exposure growth monitoring;
+- concentration risk;
+- safe next-shipment recommendation.
 
 Potential metrics:
 
-- overdue recovery rate
-- average overdue resolution time
-- overdue backlog dynamics
-- manager workload monitoring
-- action effectiveness tracking
-- promised-payment fulfillment rate
+- average exposure during payment-term window;
+- maximum historical exposure;
+- exposure volatility;
+- exposure growth rate;
+- utilization percentage;
+- debt-to-limit ratio.
+
+Purpose:
+
+Support practical credit-control and shipment approval decisions.
+
+---
+
+# 5. Workflow and collection management
+
+## 5.1 Comments and action tracking
+
+Status: **PLANNED**
+
+Potential capabilities:
+
+- client comments;
+- invoice comments;
+- next action;
+- responsible manager;
+- promised payment date;
+- action history;
+- communication timeline.
+
+Purpose:
+
+Turn the dashboard from analytics into a lightweight collection workflow tool.
+
+---
+
+## 5.2 Notification system
+
+Status: **PLANNED**
+
+Potential capabilities:
+
+- configurable email reminders;
+- payment deadline notifications;
+- downgrade alerts;
+- repeated term-shift alerts;
+- 90+ green debt alerts;
+- escalation workflow;
+- operational notification queue.
+
+---
+
+## 5.3 Collection efficiency analytics
+
+Status: **PLANNED**
+
+Potential metrics:
+
+- overdue recovery rate;
+- average overdue resolution time;
+- overdue backlog dynamics;
+- manager workload;
+- promised-payment fulfillment;
+- action effectiveness.
 
 Purpose:
 
 Measure operational effectiveness of collection activities.
 
-## User-defined branch groups
+---
 
-Future versions may include reusable branch group definitions.
+# 6. Advanced behavioral analytics
+
+## 6.1 Payment behavior profiling
+
+Status: **PLANNED**
+
+Potential metrics:
+
+- average contractual payment term;
+- average actual payment term;
+- average payment delay;
+- maximum payment delay;
+- percentage of invoices paid on time;
+- percentage of invoices with due-date extensions;
+- extension frequency;
+- extension severity.
+
+Purpose:
+
+Improve Credit Quality V2 using actual payment behavior rather than only open receivables snapshots.
+
+---
+
+## 6.2 Predictive collection risk
+
+Status: **FUTURE / RESEARCH**
+
+Possible signals:
+
+- rising average payment term;
+- repeated shifts;
+- rating deterioration;
+- green debt maturity drift;
+- sudden exposure growth;
+- abnormal invoice size;
+- branch-specific risk patterns.
+
+Potential outputs:
+
+- probability of becoming overdue;
+- expected delay;
+- priority queue;
+- downgrade warning.
+
+---
+
+## 6.3 Behavioral anomaly detection
+
+Status: **FUTURE / RESEARCH**
+
+Potential anomalies:
+
+- unusual debt growth;
+- unusual payment-term extension;
+- sudden change in analytics type;
+- unusual shift from normal credit to cash-sale pattern;
+- invoice amount outside normal range;
+- branch-specific anomalies.
+
+---
+
+# 7. Parent organization and branch analytics
+
+## 7.1 Parent organization advanced analytics
+
+Status: **PARTIALLY IMPLEMENTED / EXTEND LATER**
+
+Already implemented:
+
+- consolidated parent card;
+- weighted Credit Quality portfolio rating;
+- counterparties table;
+- invoice table;
+- recent paid invoice table;
+- historical analytics.
+
+Possible improvements:
+
+- parent-level Credit Quality migration;
+- parent-level risk bubble chart;
+- parent-level concentration analysis;
+- internal client dispersion analysis;
+- parent-level credit limit.
+
+---
+
+## 7.2 Branch advanced analytics
+
+Status: **PARTIALLY IMPLEMENTED / EXTEND LATER**
+
+Already implemented:
+
+- branch card;
+- weighted Credit Quality portfolio rating;
+- 90+ and 120+ non-overdue KPIs;
+- client quality chart;
+- tables aligned with parent organization card;
+- recent paid invoice table;
+- Executive Branch Health page.
+
+Possible improvements:
+
+- branch green debt maturity chart;
+- branch-level risk bubble chart;
+- branch operational scorecard;
+- branch benchmarking;
+- branch risk heatmap;
+- branch workload monitoring.
+
+---
+
+## 7.3 User-defined branch groups
+
+Status: **PLANNED**
 
 Potential capabilities:
 
-- saved branch selections
-- personal branch groups
-- shared branch groups
-- regional management views
-- quick-filter presets
+- saved branch selections;
+- personal branch groups;
+- shared branch groups;
+- regional management views;
+- quick filter presets.
 
-Purpose:
+---
 
-Support recurring operational and regional analysis workflows.
+# 8. Data quality and governance
 
-## Data quality and governance
+## 8.1 Data quality controls
 
-Future versions may include automated data-quality controls.
+Status: **PLANNED**
+
+Potential checks:
+
+- missing due dates;
+- duplicate invoices;
+- inconsistent client IDs;
+- inconsistent parent organization mapping;
+- abnormal payment-term values;
+- negative document handling;
+- missing analytics type;
+- unexpected currency values.
+
+Potential outputs:
+
+- ingestion quality dashboard;
+- data quality score;
+- blocking vs warning rules;
+- anomaly report.
+
+---
+
+## 8.2 Data contract hardening
+
+Status: **PLANNED**
+
+Potential tasks:
+
+- formally document required ERP export fields;
+- define accepted formats;
+- define encoding assumptions;
+- define validation rules;
+- define failure-handling logic;
+- add automated data contract tests.
+
+---
+
+# 9. Frontend and UX evolution
+
+## 9.1 Reusable dashboard widgets
+
+Status: **ONGOING**
+
+Already implemented:
+
+- reusable chart functions;
+- KPI cards;
+- rating stars;
+- rating strips;
+- Credit Quality strip;
+- navigation;
+- branch filter.
+
+Possible improvements:
+
+- reusable table formatters;
+- reusable invoice table component;
+- reusable client link component;
+- reusable parent / branch link components;
+- centralized date and money formatting.
+
+---
+
+## 9.2 Persistent filters and layout personalization
+
+Status: **PLANNED**
 
 Potential capabilities:
 
-- missing due-date detection
-- invoice duplication checks
-- branch-classification validation
-- parent-organization consistency checks
-- payment-term anomaly detection
-- ingestion quality dashboard
-- data-quality scoring
+- remember selected branches;
+- remember period window;
+- saved user views;
+- configurable dashboard layout.
 
-Purpose:
+---
 
-Ensure analytical outputs remain trustworthy as the system scales.
+## 9.3 Mobile and responsive polish
 
-## Executive risk concentration analytics
+Status: **PLANNED**
 
-Current status:
-- risk bubble chart implemented
-- hidden risk bubble chart implemented
-- TOP-20 concentration bubble chart implemented
+Potential improvements:
 
-Implemented analytical dimensions:
+- mobile-friendly card stacking;
+- compact tables;
+- responsive chart heights;
+- simplified operational queue for mobile users.
 
-### Risk bubble chart
+---
 
-- weighted payment term
-- client rating
-- debt amount
-- overdue severity coloring
+# 10. Multi-currency support
 
-### Hidden risk bubble chart
+Status: **PLANNED / LOW PRIORITY UNTIL NEEDED**
 
-- share of 90+ green debt
-- share of 120+ green debt
-- hidden-risk classification
-- debt concentration visualization
+Potential capabilities:
 
-### Concentration monitoring
+- RUR and EUR separated KPI cards;
+- currency-specific overdue amounts;
+- currency-specific branch summaries;
+- optional FX conversion;
+- hiding unused currency blocks.
 
-- TOP-20 largest debtors
-- portfolio concentration analysis
-- executive risk prioritization
+---
 
-Purpose:
+# 11. Documentation roadmap
 
-Allow management to identify:
-- large risky exposures
-- hidden risk inside green debt
-- concentration of portfolio risk
-- clients requiring proactive credit review
+Status: **ONGOING**
+
+Current documentation files:
+
+- `README.md`
+- `docs/PROJECT_STATUS.md`
+- `docs/DATA_MODEL.md`
+- `docs/FUTURE_ROADMAP.md`
+- `docs/DEPLOYMENT.md`
+- `docs/PRODUCTION_CONTEXT.md`
+- `docs/ARCHITECTURE.md`
+- `docs/METRICS.md`
+- `docs/DASHBOARD_LAYOUT.md`
+- `docs/DATA_CONTRACT.md`
+
+Recommended next documentation updates:
+
+1. Add screenshots after UI stabilizes.
+2. Add SQL dependency map.
+3. Add production deployment checklist.
+4. Add demo script for stakeholder presentation.
+5. Add Credit Quality V2 methodology note.
+
+---
+
+# 12. Recommended next development sequence
+
+## Immediate
+
+1. Commit current documentation update.
+2. Continue daily snapshot accumulation.
+3. Monitor Credit Quality V2 outputs on real clients.
+4. Tune YAML thresholds after 1–2 weeks of observation.
+5. Prepare production deployment checklist.
+
+## Next product cycle
+
+1. Production deployment with password protection.
+2. Scheduled ETL.
+3. Backup strategy.
+4. Credit Quality V2 historical snapshots.
+5. Credit Quality migration analytics.
+6. Branch-level green debt maturity visualization.
+
+## Later
+
+1. Comments and collection workflow.
+2. Credit limits.
+3. Notifications.
+4. Real payment history integration.
+5. Predictive risk analytics.
