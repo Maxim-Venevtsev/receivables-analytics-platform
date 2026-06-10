@@ -26,6 +26,9 @@ from src.app.components.behavioral_indicators import (
 from src.app.components.rating_migration_strip import (
     render_rating_migration_strip,
 )
+from src.app.components.credit_quality_strip import (
+    render_credit_quality_strip,
+)
 from urllib.parse import quote
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -277,6 +280,12 @@ def client_card_page(client_id: str, request: Request):
         WHERE client_id = :client_id
     """, {"client_id": client_id})
 
+    credit_quality = query_df("""
+        SELECT *
+        FROM core.v_client_credit_quality_rating
+        WHERE client_id = :client_id
+    """, {"client_id": client_id})
+
     client_name = df["client_name"].iloc[0]
     client_group = df["client_group"].iloc[0]
     parent_org_id = df["parent_org_id"].iloc[0]
@@ -336,12 +345,30 @@ def client_card_page(client_id: str, request: Request):
 
     rating_subtitle = f"{rating_label} · {confidence_level}"
 
+    if not credit_quality.empty:
+
+        cq = credit_quality.iloc[0]
+
+        cq_stars = int(cq["credit_quality_stars"])
+
+        rating_text = rating_stars_html(cq_stars)
+
+        rating_subtitle = (
+            f"Base {int(cq['base_stars'])}★"
+            f" → CQ {cq_stars}★"
+        )
+
     with ui.row().classes("gap-4 mb-6"):
         kpi_card("Общий долг", money(total_debt))
         kpi_card("Просрочено", money(overdue_debt))
         kpi_card("% просрочки", percent(overdue_pct))
         kpi_card("Макс. дней", str(max_days))
         kpi_card("Рейтинг", rating_text, rating_subtitle)
+
+    if not credit_quality.empty:
+        render_credit_quality_strip(
+            credit_quality.iloc[0]
+        )
 
     # Rating migration strip is rendered together with the selected
     # historical period below, because it depends on the active window.

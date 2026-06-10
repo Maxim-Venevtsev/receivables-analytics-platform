@@ -28,3 +28,71 @@ ratings:
 
   1:
     label: "Высокий риск"
+
+severity_model:
+  enabled: true
+
+  exposure_segments:
+    small:
+      max_total_debt: 500000
+      max_weighted_payment_term_days: 30
+      multiplier: 0.5
+
+    medium:
+      max_total_debt: 2000000
+      max_weighted_payment_term_days: 60
+      multiplier: 1.0
+
+    large:
+      multiplier: 1.5
+
+  payment_term_quality:
+    weighted_avg_payment_term_days:
+      - threshold: 45
+        severity_points: 1
+      - threshold: 60
+        severity_points: 2
+      - threshold: 90
+        severity_points: 3
+
+    max_payment_term_days:
+      - threshold: 90
+        severity_points: 1
+      - threshold: 120
+        severity_points: 2
+
+    green_90_plus_share_pct:
+      - threshold: 10
+        severity_points: 1
+      - threshold: 25
+        severity_points: 2
+      - threshold: 50
+        severity_points: 3
+
+    green_120_plus_debt:
+      - threshold: 1
+        severity_points: 2
+
+  term_shift_behavior:
+    term_shift_count:
+      - threshold: 2
+        severity_points: 1
+      - threshold: 4
+        severity_points: 2
+      - threshold: 6
+        severity_points: 3
+
+  penalty_mapping:
+    - min_severity_points: 0
+      penalty: 0
+    - min_severity_points: 2
+      penalty: 0.5
+    - min_severity_points: 4
+      penalty: 1
+    - min_severity_points: 6
+      penalty: 2
+
+  final_rating:
+    min_stars: 1
+    max_stars: 5
+    rounding: floor

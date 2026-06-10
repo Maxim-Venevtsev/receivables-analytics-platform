@@ -309,6 +309,43 @@ def build_rating_exposure_chart(rating_df: pd.DataFrame) -> go.Figure:
 
     return chart
 
+def build_credit_quality_exposure_chart(rating_df: pd.DataFrame) -> go.Figure:
+    chart = go.Figure()
+
+    if rating_df.empty:
+        return chart
+
+    df = rating_df.copy()
+    df["stars_label"] = df["credit_quality_stars"].fillna(0).astype(int).astype(str) + "★"
+    df = df.sort_values("credit_quality_stars")
+
+    chart.add_trace(go.Bar(
+        x=df["stars_label"],
+        y=df["total_debt"],
+        name="Общий долг",
+        marker_color="#2563eb",
+    ))
+
+    chart.add_trace(go.Bar(
+        x=df["stars_label"],
+        y=df["overdue_debt"],
+        name="Просрочено",
+        marker_color="#dc2626",
+    ))
+
+    chart.update_layout(
+        height=320,
+        margin=dict(l=20, r=20, t=40, b=20),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        barmode="group",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis=dict(title="", showgrid=False),
+        yaxis=dict(title="", gridcolor="#e5e7eb", zeroline=False),
+        hovermode="x unified",
+    )
+
+    return chart
 
 def build_rating_migration_chart(summary_df: pd.DataFrame) -> go.Figure:
     chart = go.Figure()

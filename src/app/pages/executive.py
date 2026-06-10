@@ -16,6 +16,7 @@ from src.app.components.charts import (
     build_weighted_payment_term_chart,
     build_long_green_exposure_chart,
     build_rating_exposure_chart,
+    build_credit_quality_exposure_chart,
     build_rating_migration_chart,
     build_client_risk_bubble_chart,
     build_top_client_risk_bubble_chart,
@@ -251,6 +252,17 @@ def executive_overview_page():
         ORDER BY stars NULLS LAST
     """)
 
+    credit_quality_exposure = query_df("""
+        SELECT
+            credit_quality_stars,
+            COUNT(*) AS client_count,
+            SUM(total_debt) AS total_debt,
+            SUM(overdue_debt) AS overdue_debt
+        FROM core.v_client_credit_quality_rating
+        GROUP BY credit_quality_stars
+        ORDER BY credit_quality_stars NULLS LAST
+    """)
+
     rating_migration = query_df("""
         SELECT *
         FROM core.v_executive_rating_migration_summary
@@ -393,13 +405,13 @@ def executive_overview_page():
 
     section_title(
         "Качество клиентов",
-        "Распределение задолженности по рейтинговым сегментам клиентов.",
+        "Распределение задолженности по кредитному качеству клиентов.",
     )
 
     chart_card(
-        "Экспозиция по рейтинговым сегментам",
-        "Сколько денег находится в каждом рейтинговом сегменте и какая часть из них уже просрочена.",
-        build_rating_exposure_chart(rating_exposure),
+        "Экспозиция по кредитному качеству клиентов",
+        "Распределение задолженности по Credit Quality Rating с учетом просрочки, длинных отсрочек и переносов сроков.",
+        build_credit_quality_exposure_chart(credit_quality_exposure),
     )
 
     section_title(
