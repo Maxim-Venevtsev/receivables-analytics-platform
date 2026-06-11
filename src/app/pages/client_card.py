@@ -29,6 +29,10 @@ from src.app.components.rating_migration_strip import (
 from src.app.components.credit_quality_strip import (
     render_credit_quality_strip,
 )
+from src.app.components.payment_behavior_strip import (
+    render_payment_behavior_strip,
+    get_payment_behavior_metrics,
+)
 from urllib.parse import quote
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -76,6 +80,81 @@ def money_precise(value) -> str:
     if pd.isna(value):
         return "0,00"
     return f"{float(value):,.2f}".replace(",", " ").replace(".", ",")
+
+
+def _invoice_age_days(invoice_date, as_of_date) -> int | None:
+    if pd.isna(invoice_date) or pd.isna(as_of_date):
+        return None
+
+    return int(
+        (
+            pd.to_datetime(as_of_date).normalize()
+            - pd.to_datetime(invoice_date).normalize()
+        ).days
+    )
+
+
+def payment_expectation_signal(row, behavior_metrics: dict, as_of_date) -> dict:
+    if row.get("is_overdue_real"):
+        return {
+            "label": "Просрочено",
+            "level": "overdue",
+            "age_days": _invoice_age_days(row.get("invoice_date"), as_of_date),
+        }
+
+    if not behavior_metrics.get("has_data"):
+        return {
+            "label": "Нет профиля",
+            "level": "no_data",
+            "age_days": _invoice_age_days(row.get("invoice_date"), as_of_date),
+        }
+
+    usual_from = behavior_metrics.get("usual_from")
+    usual_to = behavior_metrics.get("usual_to")
+    invoice_count = int(behavior_metrics.get("invoice_count", 0))
+
+    if pd.isna(usual_from) or pd.isna(usual_to):
+        return {
+            "label": "Нет профиля",
+            "level": "no_data",
+            "age_days": _invoice_age_days(row.get("invoice_date"), as_of_date),
+        }
+
+    age_days = _invoice_age_days(row.get("invoice_date"), as_of_date)
+
+    if age_days is None:
+        return {
+            "label": "Нет даты",
+            "level": "no_data",
+            "age_days": None,
+        }
+
+    if age_days < float(usual_from):
+        return {
+            "label": "",
+            "level": "normal",
+            "age_days": age_days,
+        }
+
+    if age_days <= float(usual_to):
+        return {
+            "label": "Обычный срок",
+            "level": "usual_window",
+            "age_days": age_days,
+        }
+
+    if invoice_count < 5:
+        return {
+            "label": "Пора напомнить?",
+            "level": "reminder_low_confidence",
+            "age_days": age_days,
+        }
+
+    return {
+        "label": "Пора напомнить",
+        "level": "reminder",
+        "age_days": age_days,
+    }
 
 
 @ui.page("/client/{client_id}")
@@ -286,6 +365,13 @@ def client_card_page(client_id: str, request: Request):
         WHERE client_id = :client_id
     """, {"client_id": client_id})
 
+    payment_behavior_metrics = get_payment_behavior_metrics(paid_invoices)
+
+    if not history_df.empty:
+        active_invoice_as_of_date = history_df["report_generated_date"].max()
+    else:
+        active_invoice_as_of_date = pd.Timestamp.today().normalize()
+
     client_name = df["client_name"].iloc[0]
     client_group = df["client_group"].iloc[0]
     parent_org_id = df["parent_org_id"].iloc[0]
@@ -368,6 +454,11 @@ def client_card_page(client_id: str, request: Request):
     if not credit_quality.empty:
         render_credit_quality_strip(
             credit_quality.iloc[0]
+        )
+    
+    if not paid_invoices.empty:
+        render_payment_behavior_strip(
+            paid_invoices
         )
 
     # Rating migration strip is rendered together with the selected
@@ -549,9 +640,20 @@ def client_card_page(client_id: str, request: Request):
                         rating_migration_selected.iloc[0]
                     )
 
-                ui.label("Интерпретация периода").classes(
-                    "text-sm text-gray-500 mb-3"
-                )
+                with ui.row().classes("items-center gap-2 mb-3"):
+                    ui.label("Интерпретация периода").classes(
+                        "text-sm text-gray-500"
+                    )
+
+                    with ui.icon("info_outline").classes("text-gray-500 cursor-help"):
+                        ui.tooltip(
+                            "Проценты показывают изменение показателя за выбранный период. "
+                            "Например, '+9.0%' у долга означает изменение общей задолженности "
+                            "между началом и концом выбранного окна. "
+                            "Регулярная просрочка рассчитывается как доля дней периода, "
+                            "в которые у клиента была просроченная задолженность. "
+                            "Стабильность поведения отражает волатильность структуры долга."
+                        )
 
                 with ui.row().classes("gap-3 mb-4"):
                     with ui.card().classes("px-4 py-2"):
@@ -672,6 +774,22 @@ def client_card_page(client_id: str, request: Request):
             lambda value: "" if pd.isna(value) else str(int(value))
         )
 
+        payment_signals = dff.apply(
+            lambda row: payment_expectation_signal(
+                row,
+                payment_behavior_metrics,
+                active_invoice_as_of_date,
+            ),
+            axis=1,
+        )
+
+        dff["payment_signal_label"] = payment_signals.apply(lambda value: value["label"])
+        dff["payment_signal_level"] = payment_signals.apply(lambda value: value["level"])
+        dff["invoice_age_days"] = payment_signals.apply(lambda value: value["age_days"])
+        dff["invoice_age_days_fmt"] = dff["invoice_age_days"].apply(
+            lambda value: "" if pd.isna(value) else str(int(value))
+        )
+
         dff["payment_term_baseline_days"] = dff.apply(
             get_baseline_payment_term,
             axis=1,
@@ -736,6 +854,8 @@ def client_card_page(client_id: str, request: Request):
             {"name": "analytics_type", "label": "Аналитика", "field": "analytics_type"},
             {"name": "due_date", "label": "Оплатить до", "field": "due_date_fmt"},
             {"name": "payment_term_days", "label": "Отсрочка, дней", "field": "payment_term_days_fmt", "align": "right"},
+            {"name": "invoice_age_days", "label": "Возраст", "field": "invoice_age_days_fmt", "align": "right"},
+            {"name": "payment_signal", "label": "Ожидание оплаты", "field": "payment_signal_label", "align": "center"},
             {"name": "term_shift_fmt", "label": "Переносы", "field": "term_shift_fmt", "align": "center"},
             {"name": "invoice_amount_fmt", "label": "Сумма", "field": "invoice_amount_fmt", "align": "right"},
             {"name": "days_overdue_real", "label": "Просрочка (дни)", "field": "days_overdue_real", "align": "right"},
@@ -770,6 +890,28 @@ def client_card_page(client_id: str, request: Request):
                         "
                         :label="col.value"
                     />
+                </template>
+
+                <template v-else-if="col.name === 'payment_signal'">
+
+                    <q-badge
+                        v-if="col.value"
+                        :color="
+                            props.row.payment_signal_level === 'overdue'
+                                ? 'red'
+                                : props.row.payment_signal_level === 'reminder'
+                                    ? 'orange'
+                                    : props.row.payment_signal_level === 'reminder_low_confidence'
+                                        ? 'amber'
+                                        : props.row.payment_signal_level === 'usual_window'
+                                            ? 'blue'
+                                            : 'grey'
+                        "
+                        :label="col.value"
+                    />
+
+                    <span v-else></span>
+
                 </template>
 
                 <template v-else-if="col.name === 'term_shift_fmt'">
@@ -860,6 +1002,40 @@ def client_card_page(client_id: str, request: Request):
                 )
             )
 
+            usual_from = payment_behavior_metrics.get("usual_from")
+            usual_to = payment_behavior_metrics.get("usual_to")
+
+            def paid_behavior_label(row):
+                actual_days = row.get("actual_payment_term_days")
+
+                if pd.isna(actual_days) or pd.isna(usual_from) or pd.isna(usual_to):
+                    return ""
+
+                actual_days = float(actual_days)
+
+                if actual_days < float(usual_from):
+                    return "Раньше обычного"
+
+                if actual_days <= float(usual_to):
+                    return "Обычно"
+
+                if actual_days <= float(usual_to) + 7:
+                    return "Позже обычного"
+
+                return "Сильно позже"
+
+
+            def paid_behavior_level(label):
+                return {
+                    "Раньше обычного": "early",
+                    "Обычно": "normal",
+                    "Позже обычного": "late",
+                    "Сильно позже": "very_late",
+                }.get(label, "")
+
+
+            dff["paid_behavior_label"] = dff.apply(paid_behavior_label, axis=1)
+            dff["paid_behavior_level"] = dff["paid_behavior_label"].apply(paid_behavior_level)
             dff["payment_event_type_label"] = dff["payment_event_type"].map({
                 "FULL": "Полная",
                 "PARTIAL": "Частичная",
@@ -877,6 +1053,7 @@ def client_card_page(client_id: str, request: Request):
                 {"name": "due_date", "label": "Оплатить до", "field": "due_date_fmt"},
                 {"name": "estimated_payment_date", "label": "Расч. дата оплаты", "field": "estimated_payment_date_fmt"},
                 {"name": "actual_payment_term_days", "label": "Факт, дней", "field": "actual_payment_term_days_fmt", "align": "right"},
+                {"name": "paid_behavior", "label": "Платежное поведение", "field": "paid_behavior_label", "align": "center"},
                 {"name": "payment_delay", "label": "Просрочка оплаты", "field": "payment_delay_fmt", "align": "center"},
                 {"name": "term_shift_fmt", "label": "Переносы", "field": "term_shift_fmt", "align": "center"},
                 {"name": "paid_amount", "label": "Оплачено", "field": "paid_amount_fmt", "align": "right"},
@@ -904,6 +1081,23 @@ def client_card_page(client_id: str, request: Request):
                             "
                             :label="col.value"
                         />
+                    </template>
+
+                    <template v-else-if="col.name === 'paid_behavior'">
+                        <q-badge
+                            v-if="col.value"
+                            :color="
+                                props.row.paid_behavior_level === 'early'
+                                    ? 'green'
+                                    : props.row.paid_behavior_level === 'normal'
+                                        ? 'blue'
+                                        : props.row.paid_behavior_level === 'late'
+                                            ? 'orange'
+                                            : 'red'
+                            "
+                            :label="col.value"
+                        />
+                        <span v-else></span>
                     </template>
 
                     <template v-else-if="col.name === 'term_shift_fmt'">

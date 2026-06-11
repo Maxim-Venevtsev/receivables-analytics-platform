@@ -553,6 +553,83 @@ Purpose:
 
 Improve Credit Quality V2 using actual payment behavior rather than only open receivables snapshots.
 
+## 6.1.1 Analytics Segment Monitoring
+
+Status: **PLANNED**
+
+Motivation:
+
+Portfolio behavior differs significantly between analytics types.
+
+Current observations:
+
+### ARS_NEW
+
+Typical characteristics:
+
+- large invoice amounts;
+- long contractual payment terms;
+- due-date extensions;
+- hidden-risk scenarios;
+- high management attention required.
+
+### Розница
+
+Typical characteristics:
+
+- high invoice volume;
+- small invoice amounts;
+- short payment terms (3–7 days);
+- rapid turnover;
+- low individual risk;
+- operational noise dominates.
+
+### НО
+
+Typical characteristics:
+
+- requires separate policy monitoring;
+- low current materiality;
+- potential indicator of credit-policy bypass.
+
+Potential capabilities:
+
+- portfolio split by analytics type;
+- analytics-specific KPI cards;
+- analytics-specific overdue monitoring;
+- analytics-specific exposure monitoring;
+- analytics-specific client rankings;
+- analytics-specific executive dashboards.
+
+Potential KPI examples:
+
+ARS_NEW:
+
+- total exposure;
+- overdue share;
+- hidden-risk share;
+- average payment term;
+- average extension frequency.
+
+Розница:
+
+- turnover volume;
+- collection speed;
+- overdue ratio;
+- average invoice size;
+- top retail clients.
+
+НО:
+
+- exposure volume;
+- client count;
+- policy exceptions;
+- mixed analytics monitoring.
+
+Purpose:
+
+Avoid mixing fundamentally different business processes into a single portfolio view and improve management focus.
+
 ---
 
 ## 6.2 Predictive collection risk
@@ -590,6 +667,20 @@ Potential anomalies:
 - unusual shift from normal credit to cash-sale pattern;
 - invoice amount outside normal range;
 - branch-specific anomalies.
+
+## Event-driven receivables monitoring
+
+Current status:
+- implemented
+
+Future improvements:
+
+- event severity scoring
+- grouping related invoice events
+- branch-level event aggregation
+- event acknowledgement workflow
+- manager assignment
+- event notification queue
 
 ---
 

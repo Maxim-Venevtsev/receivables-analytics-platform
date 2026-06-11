@@ -357,6 +357,17 @@ Implemented:
 - actual payment-term estimation;
 - recent paid invoice blocks.
 
+### Phase 3.3 — Payment behavior analytics
+
+Implemented:
+
+- payment behavior strip on Client Card
+- usual payment window estimation
+- early / normal / late payment classification
+- payment expectation signals for active invoices
+- invoice-age monitoring
+- actual payment behavior profiling
+
 ---
 
 ## Current architecture
