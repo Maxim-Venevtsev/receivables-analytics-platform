@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, text
 
 from src.app.components.navigation import top_navigation
 from src.app.components.kpi_cards import money, percent
-from src.app.components.rating_stars import rating_aggrid_cell_renderer
+from src.app.components.branch_table import render_branch_table
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -19,6 +19,22 @@ engine = create_engine(
     f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@"
     f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
 )
+
+
+EXECUTIVE_BRANCH_COLUMNS = [
+    "client_group",
+    "rating",
+    "total_debt",
+    "overdue_debt",
+    "overdue_share_pct",
+    "green_60_plus_debt",
+    "green_90_plus_debt",
+    "green_120_plus_debt",
+    "shifted_amount",
+    "term_shift_count",
+    "repeated_shift_invoice_count",
+    "max_current_payment_term_days",
+]
 
 
 def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
@@ -38,7 +54,7 @@ def compact_kpi(title: str, value: str, subtitle: str = ""):
 def executive_branches_page():
     ui.label("Состояние филиалов").classes("text-3xl font-bold mb-2")
     ui.label(
-        "Сравнение филиалов по просрочке, длинной непросроченной задолженности и рейтингу портфеля"
+        "Сравнение филиалов по просрочке, переносам сроков и рейтингу портфеля"
     ).classes("text-gray-500 mb-4")
 
     top_navigation()
@@ -65,6 +81,57 @@ def executive_branches_page():
         GROUP BY client_group
     """)
 
+    term_shifts_by_branch = query_df("""
+        SELECT
+            i.client_group,
+
+            SUM(
+                CASE
+                    WHEN COALESCE(ts.term_shift_count, 0) > 0
+                    THEN i.invoice_amount
+                    ELSE 0
+                END
+            ) AS shifted_amount,
+
+            COUNT(*) FILTER (
+                WHERE COALESCE(ts.term_shift_count, 0) > 0
+            ) AS shifted_invoice_count,
+
+            SUM(COALESCE(ts.term_shift_count, 0)) AS term_shift_count,
+
+            SUM(
+                CASE
+                    WHEN COALESCE(ts.term_shift_count, 0) >= 2
+                    THEN i.invoice_amount
+                    ELSE 0
+                END
+            ) AS repeated_shift_amount,
+
+            COUNT(*) FILTER (
+                WHERE COALESCE(ts.term_shift_count, 0) >= 2
+            ) AS repeated_shift_invoice_count,
+
+            MAX(COALESCE(ts.current_term_delta_days, 0)) AS max_current_term_delta_days,
+
+            MAX(
+                COALESCE(
+                    ts.current_payment_term_days,
+                    i.payment_term_days,
+                    0
+                )
+            ) AS max_current_payment_term_days
+
+        FROM core.v_invoice_detail i
+
+        LEFT JOIN core.v_term_shift_invoice_summary ts
+            ON i.client_id = ts.client_id
+           AND i.print_invoice_number = ts.print_invoice_number
+           AND i.order_number = ts.order_number
+           AND i.invoice_date = ts.invoice_date
+
+        GROUP BY i.client_group
+    """)
+
     if branch_health.empty:
         ui.label("Нет данных по филиалам.").classes("text-green-700 text-lg")
         return
@@ -75,11 +142,11 @@ def executive_branches_page():
         how="left",
     )
 
-    df["weighted_rating_stars"] = (
-        df["weighted_rating"]
-        .round()
-        .fillna(0)
-        .astype(int)
+    df = df.merge(
+        term_shifts_by_branch,
+        on="client_group",
+        how="left",
+        suffixes=("", "_shift_calc"),
     )
 
     for src_col, target_col in [
@@ -95,6 +162,44 @@ def executive_branches_page():
         else:
             df[target_col] = df[target_col].fillna(0)
 
+    for col in [
+        "shifted_amount",
+        "shifted_invoice_count",
+        "term_shift_count",
+        "repeated_shift_amount",
+        "repeated_shift_invoice_count",
+        "max_current_term_delta_days",
+        "max_current_payment_term_days",
+    ]:
+        if col not in df.columns:
+            df[col] = 0
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    if "total_debt" not in df.columns:
+        df["total_debt"] = 0
+
+    df["total_debt"] = pd.to_numeric(
+        df["total_debt"],
+        errors="coerce",
+    ).fillna(0)
+
+    df = df[df["total_debt"] >= 1].copy()
+
+    if df.empty:
+        ui.label("Нет филиалов с задолженностью от 1 рубля.").classes("text-green-700 text-lg")
+        return
+
+    for col in [
+        "overdue_debt",
+        "overdue_share_pct",
+        "green_60_plus_debt",
+        "green_90_plus_debt",
+        "green_120_plus_debt",
+    ]:
+        if col not in df.columns:
+            df[col] = 0
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
     total_debt = float(df["total_debt"].sum())
     overdue_debt = float(df["overdue_debt"].sum())
     branch_count = int(df["client_group"].nunique())
@@ -107,7 +212,11 @@ def executive_branches_page():
     with ui.row().classes("gap-4 mb-6"):
         compact_kpi("Филиалов", str(branch_count))
         compact_kpi("Общий долг", money(total_debt))
-        compact_kpi("Просрочено", money(overdue_debt), percent(overdue_debt / total_debt * 100 if total_debt else 0))
+        compact_kpi(
+            "Просрочено",
+            money(overdue_debt),
+            percent(overdue_debt / total_debt * 100 if total_debt else 0),
+        )
         compact_kpi("Филиалов с 90+", str(branches_with_90))
         compact_kpi("Филиалов с 120+", str(branches_with_120))
         compact_kpi(
@@ -121,149 +230,30 @@ def executive_branches_page():
             str(worst_long["client_group"]),
         )
 
-    with ui.card().classes("w-full p-4 mb-3"):
-        ui.label("Риск-профиль филиалов").classes("text-xl font-bold mb-1")
-        ui.label(
-            "Абсолютные суммы длинной непросроченной задолженности показывают, где риск начинает концентрироваться."
-        ).classes("text-sm text-gray-500")
+    branch_table = render_branch_table(
+        df,
+        title="Риск-профиль филиалов",
+        subtitle=(
+            "Филиалы с задолженностью от 1 рубля. "
+            "В таблице показаны рейтинг, просрочка, длинный непросроченный долг, "
+            "переносы сроков и максимальный текущий срок."
+        ),
+        mode="executive",
+        rows_per_page=20,
+        visible_columns=EXECUTIVE_BRANCH_COLUMNS,
+    )
 
-    grid = ui.aggrid({
-        "columnDefs": [
-            {
-                "headerName": "Филиал",
-                "field": "client_group",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 180,
-                ":cellRenderer": """
-                    params => `
-                        <span style="color:#1976d2; cursor:pointer; font-weight:600;">
-                            ${params.value}
-                        </span>
-                    `
-                """,
-            },
-            {
-                "headerName": "Общий долг",
-                "field": "total_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 150,
-                ":valueFormatter": "params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')",
-            },
-            {
-                "headerName": "Просрочено",
-                "field": "overdue_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 150,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 0 ? '#dc2626' : '#6b7280';
-                        return `<span style="color:${color}; font-weight:700;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "% просрочки",
-                "field": "overdue_share_pct",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 150,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 20 ? '#dc2626' : value > 10 ? '#f97316' : value > 0 ? '#ca8a04' : '#16a34a';
-                        return `<span style="color:${color}; font-weight:700;">${value.toFixed(1)}%</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "45+",
-                "field": "green_45_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":valueFormatter": "params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')",
-            },
-            {
-                "headerName": "60+",
-                "field": "green_60_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":valueFormatter": "params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')",
-            },
-            {
-                "headerName": "90+",
-                "field": "green_90_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 0 ? '#dc2626' : '#6b7280';
-                        return `<span style="color:${color}; font-weight:700;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "120+",
-                "field": "green_120_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 0 ? '#991b1b' : '#6b7280';
-                        return `<span style="color:${color}; font-weight:700;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "Рейтинг",
-                "field": "weighted_rating_stars",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "minWidth": 120,
-                "maxWidth": 140,
-                ":cellRenderer": rating_aggrid_cell_renderer(),
-            },
-            {
-                "headerName": "Динамика",
-                "field": "portfolio_change_label",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 180,
-            },
-        ],
-        "rowData": df.to_dict("records"),
-        "defaultColDef": {"resizable": True, "sortable": True, "filter": True},
-        "pagination": True,
-        "paginationPageSize": 30,
-    }).classes("w-full h-[620px] mb-6")
-
-    def open_branch_card_from_grid(event):
-        args = event.args or {}
-        data = args.get("data") or {}
-        col_id = (
-            args.get("colId")
-            or (args.get("column") or {}).get("colId")
-            or (args.get("colDef") or {}).get("field")
+    if branch_table is not None:
+        branch_table.on(
+            "branch_click",
+            lambda event: ui.navigate.to(
+                f"/branch/{quote(str(event.args))}?from=/executive/branches"
+            ),
         )
 
-        if col_id == "client_group" and data.get("client_group"):
-            branch = quote(str(data["client_group"]))
-            ui.navigate.to(f"/branch/{branch}?from=/executive/branches")
-
-    grid.on("cellClicked", open_branch_card_from_grid)
+        branch_table.on(
+            "branch_open",
+            lambda event: ui.navigate.to(
+                f"/branch/{quote(str(event.args))}?from=/executive/branches"
+            ),
+        )

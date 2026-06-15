@@ -24,8 +24,8 @@ from src.app.pages.payment_attention import payment_attention_page
 from src.app.pages.term_shifts import term_shifts_page
 
 from src.app.components.navigation import top_navigation
-from src.app.components.rating_stars import rating_stars_html
 from src.app.components.clients_table import render_clients_table
+from src.app.components.branch_table import render_branch_table
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -37,6 +37,35 @@ engine = create_engine(
 )
 
 
+DASHBOARD_CLIENT_COLUMNS = [
+    "client_group",
+    "client",
+    "rating",
+    "total_debt",
+    "overdue_debt",
+    "overdue_share_pct",
+    "due_today",
+    "due_soon_only",
+    "normal_window_amount",
+    "payment_attention_amount",
+    "shifted_amount",
+]
+
+
+DASHBOARD_BRANCH_COLUMNS = [
+    "client_group",
+    "rating",
+    "total_debt",
+    "overdue_debt",
+    "overdue_share_pct",
+    "due_today",
+    "due_soon_only",
+    "normal_window_amount",
+    "payment_attention_amount",
+    "shifted_amount",
+]
+
+
 def query_df(sql: str) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(sql), conn)
@@ -46,12 +75,6 @@ def money(value) -> str:
     if pd.isna(value):
         return "0"
     return f"{float(value):,.0f}".replace(",", " ")
-
-
-def money_precise(value) -> str:
-    if pd.isna(value):
-        return "0,00"
-    return f"{float(value):,.2f}".replace(",", " ").replace(".", ",")
 
 
 def percent(value) -> str:
@@ -68,6 +91,7 @@ def compact_kpi(
     route: str | None = None,
 ):
     card_classes = "w-64 h-36 p-4"
+
     if route:
         card_classes += " cursor-pointer hover:shadow-lg"
 
@@ -91,150 +115,92 @@ def compact_kpi(
     return value_label, subtitle_label
 
 
-def table_page_props() -> str:
-    return 'rows-per-page-options="[20, 50, 100]"'
+def render_debt_structure_bar(metrics: dict):
+    total_debt = float(metrics.get("total_debt", 0) or 0)
+    overdue_debt = float(metrics.get("overdue_debt", 0) or 0)
+    due_today = float(metrics.get("due_today", 0) or 0)
+    due_soon_only = float(metrics.get("due_soon_only", 0) or 0)
+
+    normal_debt = max(
+        total_debt - overdue_debt - due_today - due_soon_only,
+        0,
+    )
+
+    buckets = [
+        {
+            "label": "В обычном режиме",
+            "amount": normal_debt,
+            "color": "#22c55e",
+        },
+        {
+            "label": "Ближайшие 3 дня",
+            "amount": due_soon_only,
+            "color": "#facc15",
+        },
+        {
+            "label": "К оплате сегодня",
+            "amount": due_today,
+            "color": "#f97316",
+        },
+        {
+            "label": "Просрочено",
+            "amount": overdue_debt,
+            "color": "#dc2626",
+        },
+    ]
+
+    with ui.card().classes("w-full p-4 mb-6"):
+        ui.label("Структура задолженности").classes("text-xl font-bold mb-1")
+        ui.label(
+            "Операционная структура текущего долга: нормальная задолженность, "
+            "ближайшие сроки оплаты, платежи сегодня и просрочка."
+        ).classes("text-sm text-gray-500 mb-4")
+
+        with ui.element("div").classes("w-full h-8 rounded-full overflow-hidden flex bg-gray-100"):
+            for bucket in buckets:
+                amount = float(bucket["amount"] or 0)
+                share = amount / total_debt * 100 if total_debt else 0
+
+                if amount <= 0:
+                    continue
+
+                ui.element("div").style(
+                    f"width: {share}%; background-color: {bucket['color']};"
+                ).classes("h-8")
+
+        with ui.row().classes("gap-4 mt-4 flex-wrap"):
+            for bucket in buckets:
+                amount = float(bucket["amount"] or 0)
+                share = amount / total_debt * 100 if total_debt else 0
+
+                with ui.row().classes("items-center gap-2"):
+                    ui.element("div").style(
+                        "width: 12px; height: 12px; "
+                        f"border-radius: 9999px; background-color: {bucket['color']};"
+                    )
+                    ui.label(
+                        f"{bucket['label']}: {money(amount)} · {percent(share)}"
+                    ).classes("text-sm text-gray-700")
 
 
-def prepare_money_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+def normalize_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     result = df.copy()
-    for col in cols:
-        if col in result.columns:
-            result[f"{col}_fmt"] = result[col].apply(money_precise)
+
+    for col in columns:
+        if col not in result.columns:
+            result[col] = 0
+
+        result[col] = pd.to_numeric(
+            result[col],
+            errors="coerce",
+        ).fillna(0)
+
     return result
-
-
-def prepare_percent_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-    result = df.copy()
-    for col in cols:
-        if col in result.columns:
-            result[f"{col}_fmt"] = result[col].apply(percent)
-    return result
-
-
-def add_branch_slots(table):
-    table.add_slot(
-        "body-cell-client_group",
-        """
-        <q-td :props="props" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            <q-btn
-                dense
-                :flat="!props.row.is_selected"
-                :unelevated="props.row.is_selected"
-                :outline="!props.row.is_selected"
-                :color="props.row.is_selected ? 'primary' : 'grey-7'"
-                :label="props.row.client_group"
-                @click="$parent.$emit('branch_click', props.row.client_group)"
-            />
-
-            <q-btn
-                dense
-                flat
-                color="primary"
-                icon="open_in_new"
-                class="ml-2"
-                @click.stop="$parent.$emit('branch_open', props.row.client_group)"
-            />
-        </q-td>
-        """,
-    )
-
-    table.add_slot(
-        "body-cell-rating",
-        """
-        <q-td :props="props" class="text-center" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            {{ props.row.weighted_rating_fmt }}
-        </q-td>
-        """,
-    )
-
-    for col in [
-        "total_debt",
-        "overdue_debt",
-        "shifted_amount",
-        "due_today",
-        "due_soon_only",
-        "payment_attention_amount",
-    ]:
-        table.add_slot(
-            f"body-cell-{col}",
-            f"""
-            <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-                {{{{ props.row.{col}_fmt }}}}
-            </q-td>
-            """,
-        )
-
-    for col in ["overdue_share_pct", "shifted_share_pct"]:
-        table.add_slot(
-            f"body-cell-{col}",
-            f"""
-            <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-                <q-badge
-                    :color="props.row.{col} > 20 ? 'red' : props.row.{col} > 0 ? 'orange' : 'green'"
-                    :label="props.row.{col}_fmt"
-                />
-            </q-td>
-            """,
-        )
-
-
-def add_client_slots(table):
-    table.add_slot(
-        "body",
-        """
-        <q-tr
-            :props="props"
-            :class="{
-                'bg-red-1': props.row.operational_status === 'OVERDUE',
-                'bg-orange-1': props.row.operational_status === 'DUE_TODAY',
-                'bg-yellow-1': props.row.operational_status === 'DUE_SOON',
-                'bg-blue-1': props.row.operational_status === 'PAYMENT_ATTENTION',
-                'bg-brown-1': props.row.operational_status === 'TERM_SHIFT'
-            }"
-        >
-            <q-td v-for="col in props.cols" :key="col.name" :props="props">
-
-                <template v-if="col.name === 'client'">
-                    <a :href="props.row.client_url" class="text-blue-600 hover:underline font-medium">
-                        {{ props.row.client_display }}
-                    </a>
-                </template>
-
-                <template v-else-if="col.name === 'rating'">
-                    <span v-html="props.row.rating_html"></span>
-                </template>
-
-                <template v-else-if="[
-                    'total_debt',
-                    'overdue_debt',
-                    'shifted_amount',
-                    'due_today',
-                    'due_soon_only',
-                    'payment_attention_amount'
-                ].includes(col.name)">
-                    {{ props.row[col.name + '_fmt'] }}
-                </template>
-
-                <template v-else-if="['overdue_share_pct', 'shifted_share_pct'].includes(col.name)">
-                    <q-badge
-                        :color="props.row[col.name] > 20 ? 'red' : props.row[col.name] > 0 ? 'orange' : 'green'"
-                        :label="props.row[col.name + '_fmt']"
-                    />
-                </template>
-
-                <template v-else>
-                    {{ col.value }}
-                </template>
-
-            </q-td>
-        </q-tr>
-        """,
-    )
 
 
 @ui.page("/")
 def dashboard():
-    ui.label("АВС — Дебиторка").classes("text-3xl font-bold mb-2")
+    ui.label("АРС — Дебиторка").classes("text-3xl font-bold mb-2")
     ui.label(
         "Операционный центр контроля дебиторской задолженности."
     ).classes("text-gray-500 mb-4")
@@ -268,36 +234,26 @@ def dashboard():
         ui.label("Нет клиентов, требующих операционного контроля.").classes("text-lg text-green-700")
         return
 
-    selected_branches: list[str] = []
-
-    money_cols = [
+    numeric_cols = [
         "total_debt",
         "overdue_debt",
+        "overdue_share_pct",
         "shifted_amount",
+        "shifted_share_pct",
         "due_today",
         "due_soon_only",
+        "normal_window_amount",
         "payment_attention_amount",
+        "weighted_rating",
+        "stars",
     ]
 
-    percent_cols = [
-        "overdue_share_pct",
-        "shifted_share_pct",
-    ]
+    branches = normalize_numeric_columns(branches, numeric_cols)
+    clients = normalize_numeric_columns(clients, numeric_cols)
 
-    for frame in [branches, clients]:
-        for col in money_cols + percent_cols + ["weighted_rating", "stars"]:
-            if col in frame.columns:
-                frame[col] = frame[col].fillna(0).astype(float)
+    branches = branches[branches["total_debt"] >= 1].copy()
 
-    branches = prepare_money_cols(branches, money_cols)
-    branches = prepare_percent_cols(branches, percent_cols)
-
-    clients = prepare_money_cols(clients, money_cols)
-    clients = prepare_percent_cols(clients, percent_cols)
-
-    branches["weighted_rating_fmt"] = branches["weighted_rating"].apply(
-        lambda value: "—" if pd.isna(value) else f"{float(value):.2f}"
-    )
+    selected_branches: list[str] = []
 
     def filtered_clients() -> pd.DataFrame:
         result = clients.copy()
@@ -305,26 +261,36 @@ def dashboard():
         if selected_branches:
             result = result[result["client_group"].isin(selected_branches)]
 
-        
-        return result.sort_values(
-            by=[
+        sort_cols = [
+            col for col in [
                 "operational_sort_order",
                 "overdue_debt",
                 "due_today",
                 "due_soon_only",
                 "payment_attention_amount",
                 "shifted_amount",
-            ],
-            ascending=[True, False, False, False, False, False],
-        )
+            ]
+            if col in result.columns
+        ]
+
+        if sort_cols:
+            ascending = [True] + [False] * (len(sort_cols) - 1)
+            result = result.sort_values(
+                by=sort_cols,
+                ascending=ascending,
+            )
+
+        return result
 
     def filtered_branches() -> pd.DataFrame:
-        result = branches.copy()
-        result["is_selected"] = result["client_group"].isin(selected_branches)
-        result["is_dimmed"] = bool(selected_branches) & ~result["is_selected"]
-        return result.sort_values(
-            by=["overdue_debt", "shifted_amount", "payment_attention_amount"],
-            ascending=[False, False, False],
+        return branches.sort_values(
+            by=[
+                "overdue_debt",
+                "shifted_amount",
+                "payment_attention_amount",
+                "total_debt",
+            ],
+            ascending=[False, False, False, False],
         )
 
     def get_metrics() -> dict:
@@ -371,8 +337,6 @@ def dashboard():
             "due_soon_clients": due_soon_clients,
             "payment_attention_amount": payment_attention_amount,
             "payment_attention_clients": payment_attention_clients,
-            "overdue_share_pct": overdue_debt / total_debt * 100 if total_debt else 0,
-            "shifted_share_pct": shifted_amount / total_debt * 100 if total_debt else 0,
         }
 
     metrics = get_metrics()
@@ -423,34 +387,32 @@ def dashboard():
             "/payment-attention",
         )
 
-    ui.label("Сводка по филиалам").classes("text-xl font-bold mt-6 mb-1")
-    ui.label(
-        "Агрегация операционных сигналов по филиалам. "
-        "Нажатие на филиал ограничивает клиентскую сводку выбранным филиалом."
-    ).classes("text-sm text-gray-500 mb-3")
+    debt_structure_container = ui.column().classes("w-full")
+
+    def render_current_debt_structure():
+        debt_structure_container.clear()
+
+        with debt_structure_container:
+            render_debt_structure_bar(get_metrics())
+
+    render_current_debt_structure()
 
     with ui.row().classes("items-center gap-4 mb-2"):
         selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
         reset_branch_button = ui.button("ВСЕ ФИЛИАЛЫ").props("flat color=primary")
 
-    branch_table = ui.table(
-        columns=[
-            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
-            {"name": "rating", "label": "Рейтинг", "field": "weighted_rating", "align": "center", "sortable": True},
-            {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
-            {"name": "overdue_debt", "label": "Просрочено", "field": "overdue_debt", "align": "right", "sortable": True},
-            {"name": "overdue_share_pct", "label": "%", "field": "overdue_share_pct", "align": "right", "sortable": True},
-            {"name": "shifted_amount", "label": "Переносы", "field": "shifted_amount", "align": "right", "sortable": True},
-            {"name": "shifted_share_pct", "label": "%", "field": "shifted_share_pct", "align": "right", "sortable": True},
-            {"name": "due_today", "label": "К оплате сегодня", "field": "due_today", "align": "right", "sortable": True},
-            {"name": "due_soon_only", "label": "Ближайшие 3 дня", "field": "due_soon_only", "align": "right", "sortable": True},
-            {"name": "payment_attention_amount", "label": "Ожидание оплаты", "field": "payment_attention_amount", "align": "right", "sortable": True},
-        ],
-        rows=filtered_branches().to_dict("records"),
-        pagination={"rowsPerPage": 20},
-    ).classes("w-full mb-6")
-    branch_table.props(table_page_props())
-    add_branch_slots(branch_table)
+    branch_table = render_branch_table(
+        branches=filtered_branches(),
+        title="Сводка по филиалам",
+        subtitle=(
+            "Агрегация операционных сигналов по филиалам. "
+            "Нажатие на филиал ограничивает клиентскую сводку выбранным филиалом."
+        ),
+        mode="operational",
+        selected_branches=selected_branches,
+        rows_per_page=20,
+        visible_columns=DASHBOARD_BRANCH_COLUMNS,
+    )
 
     client_table = render_clients_table(
         clients=filtered_clients(),
@@ -459,19 +421,7 @@ def dashboard():
         show_branch=True,
         show_search=True,
         from_route="dashboard",
-        visible_columns=[
-            "client_group",
-            "client",
-            "rating",
-            "total_debt",
-            "overdue_debt",
-            "overdue_share_pct",
-            "due_today",
-            "due_soon_only",
-            "normal_window_amount",
-            "payment_attention_amount",
-            "shifted_amount",
-        ],
+        visible_columns=DASHBOARD_CLIENT_COLUMNS,
     )
 
     def update_kpi_cards():
@@ -509,6 +459,8 @@ def dashboard():
         ]:
             label.update()
 
+        render_current_debt_structure()
+
     def apply_filters():
         if selected_branches:
             selected_branch_label.text = f"Фильтр: {', '.join(selected_branches)}"
@@ -517,8 +469,11 @@ def dashboard():
 
         selected_branch_label.update()
 
-        branch_table.rows = filtered_branches().to_dict("records")
-        branch_table.update()
+        if branch_table is not None:
+            branch_table.refresh_branches(
+                filtered_branches(),
+                selected_branches=selected_branches,
+            )
 
         if client_table is not None:
             client_table.refresh_clients(filtered_clients())
@@ -539,26 +494,27 @@ def dashboard():
         selected_branches.clear()
         apply_filters()
 
-    branch_table.on("branch_click", toggle_branch)
-
     def open_branch_card(event):
         branch = event.args
+
         if branch:
             ui.navigate.to(f"/branch/{quote(str(branch))}?from=dashboard")
 
-    branch_table.on("branch_open", open_branch_card)
-
-    reset_branch_button.on_click(reset_branch_filter)
-    
     def open_client(event):
         ui.navigate.to(f"/client/{event.args}?from=dashboard")
 
-    def open_branch(event):
+    def open_branch_from_client_table(event):
         ui.navigate.to(f"/branch/{quote(str(event.args))}?from=/")
+
+    if branch_table is not None:
+        branch_table.on("branch_click", toggle_branch)
+        branch_table.on("branch_open", open_branch_card)
 
     if client_table is not None:
         client_table.on("client_click", open_client)
-        client_table.on("branch_click", open_branch)
+        client_table.on("branch_click", open_branch_from_client_table)
+
+    reset_branch_button.on_click(reset_branch_filter)
 
 
 ui.run()

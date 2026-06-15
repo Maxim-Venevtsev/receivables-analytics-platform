@@ -22,7 +22,10 @@ from src.app.components.charts import (
     build_top_client_risk_bubble_chart,
     build_hidden_risk_bubble_chart,
 )
-
+from src.app.components.branch_table import (
+    get_worst_branch,
+    worst_branch_signal_text,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -181,13 +184,13 @@ def render_management_signals(
             "/executive/hidden-risk",
         )
 
-    if not branch_health.empty:
-        worst = branch_health.iloc[0]
+    worst_branch = get_worst_branch(branch_health)
+
+    if worst_branch is not None:
         render_signal_card(
             "🟡",
             "Филиал с худшим риск-профилем",
-            f"{worst['client_group']} · просрочка {percent(worst['overdue_share_pct'])}, "
-            f"90+ непросрочено {percent(worst['green_90_plus_share_pct'])}",
+            worst_branch_signal_text(worst_branch),
             "/executive/branches",
         )
 

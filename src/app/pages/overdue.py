@@ -8,8 +8,8 @@ from nicegui import ui
 from sqlalchemy import create_engine, text
 
 from src.app.components.navigation import top_navigation
-from src.app.components.rating_stars import rating_stars_html
 from src.app.components.clients_table import render_clients_table
+from src.app.components.branch_table import render_branch_table
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -21,6 +21,35 @@ engine = create_engine(
 )
 
 
+OVERDUE_CLIENT_COLUMNS = [
+    "client_group",
+    "client",
+    "rating",
+    "total_debt",
+    "overdue_debt",
+    "overdue_share_pct",
+    "debt_45_plus",
+    "debt_60_plus",
+    "debt_90_plus",
+    "debt_120_plus",
+    "max_days_overdue",
+]
+
+
+OVERDUE_BRANCH_COLUMNS = [
+    "client_group",
+    "rating",
+    "total_debt",
+    "overdue_debt",
+    "overdue_share_pct",
+    "debt_45_plus",
+    "debt_60_plus",
+    "debt_90_plus",
+    "debt_120_plus",
+    "max_days_overdue",
+]
+
+
 def query_df(sql: str) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(sql), conn)
@@ -30,12 +59,6 @@ def money(value) -> str:
     if pd.isna(value):
         return "0"
     return f"{float(value):,.0f}".replace(",", " ")
-
-
-def money_precise(value) -> str:
-    if pd.isna(value):
-        return "0,00"
-    return f"{float(value):,.2f}".replace(",", " ").replace(".", ",")
 
 
 def percent(value) -> str:
@@ -50,151 +73,35 @@ def compact_kpi(
     subtitle: str = "",
     color_class: str = "text-gray-900",
 ):
+    value_label = None
+    subtitle_label = None
+
     with ui.card().classes("w-64 h-36 p-4"):
         with ui.column().classes("w-full h-full items-center justify-between text-center"):
             ui.label(title).classes("text-sm text-gray-500 h-6 flex items-center justify-center")
-            ui.label(value).classes(
+            value_label = ui.label(value).classes(
                 f"text-2xl font-bold h-10 flex items-center justify-center {color_class}"
             )
-            ui.label(subtitle).classes("text-sm text-gray-500 h-8 flex items-center justify-center")
+            subtitle_label = ui.label(subtitle).classes(
+                "text-sm text-gray-500 h-8 flex items-center justify-center"
+            )
+
+    return value_label, subtitle_label
 
 
-def prepare_money_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+def normalize_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     result = df.copy()
 
-    for col in cols:
-        if col in result.columns:
-            result[f"{col}_fmt"] = result[col].apply(money_precise)
+    for col in columns:
+        if col not in result.columns:
+            result[col] = 0
+
+        result[col] = pd.to_numeric(
+            result[col],
+            errors="coerce",
+        ).fillna(0)
 
     return result
-
-
-def prepare_percent_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-    result = df.copy()
-
-    for col in cols:
-        if col in result.columns:
-            result[f"{col}_fmt"] = result[col].apply(percent)
-
-    return result
-
-
-def table_page_props() -> str:
-    return 'rows-per-page-options="[20, 50, 100]"'
-
-
-def add_branch_summary_slots(table):
-    table.add_slot(
-        "body-cell-client_group",
-        """
-        <q-td :props="props" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            <q-btn
-                dense
-                :flat="!props.row.is_selected"
-                :unelevated="props.row.is_selected"
-                :outline="!props.row.is_selected"
-                :color="props.row.is_selected ? 'primary' : 'grey-7'"
-                :label="props.row.client_group"
-                @click="$parent.$emit('branch_click', props.row.client_group)"
-            />
-        </q-td>
-        """,
-    )
-
-    table.add_slot(
-        "body-cell-rating",
-        """
-        <q-td :props="props" class="text-center" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            {{ props.row.weighted_rating_fmt }}
-        </q-td>
-        """,
-    )
-
-    for col in [
-        "total_debt",
-        "overdue_debt",
-        "overdue_45_plus",
-        "overdue_90_plus",
-        "overdue_120_plus",
-    ]:
-        table.add_slot(
-            f"body-cell-{col}",
-            f"""
-            <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-                {{{{ props.row.{col}_fmt }}}}
-            </q-td>
-            """,
-        )
-
-    for col in [
-        "overdue_share_pct",
-        "overdue_45_share_pct",
-        "overdue_90_share_pct",
-        "overdue_120_share_pct",
-    ]:
-        table.add_slot(
-            f"body-cell-{col}",
-            f"""
-            <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-                <q-badge
-                    :color="props.row.{col} > 20 ? 'red' : props.row.{col} > 0 ? 'orange' : 'green'"
-                    :label="props.row.{col}_fmt"
-                />
-            </q-td>
-            """,
-        )
-
-
-def add_client_summary_slot(table):
-    table.add_slot(
-        "body",
-        """
-        <q-tr :props="props">
-            <q-td v-for="col in props.cols" :key="col.name" :props="props">
-
-                <template v-if="col.name === 'client'">
-                    <a
-                        :href="props.row.client_url"
-                        class="text-blue-600 hover:underline font-medium"
-                    >
-                        {{ props.row.client_display }}
-                    </a>
-                </template>
-
-                <template v-else-if="col.name === 'rating'">
-                    <span v-html="props.row.rating_html"></span>
-                </template>
-
-                <template v-else-if="[
-                    'total_debt',
-                    'overdue_debt',
-                    'overdue_45_plus',
-                    'overdue_90_plus',
-                    'overdue_120_plus'
-                ].includes(col.name)">
-                    {{ props.row[col.name + '_fmt'] }}
-                </template>
-
-                <template v-else-if="[
-                    'overdue_share_pct',
-                    'overdue_45_share_pct',
-                    'overdue_90_share_pct',
-                    'overdue_120_share_pct'
-                ].includes(col.name)">
-                    <q-badge
-                        :color="props.row[col.name] > 20 ? 'red' : props.row[col.name] > 0 ? 'orange' : 'green'"
-                        :label="props.row[col.name + '_fmt']"
-                    />
-                </template>
-
-                <template v-else>
-                    {{ col.value }}
-                </template>
-
-            </q-td>
-        </q-tr>
-        """,
-    )
 
 
 @ui.page("/overdue")
@@ -202,12 +109,12 @@ def overdue_page():
     ui.label("Просроченная дебиторка").classes("text-3xl font-bold mb-2")
     ui.label(
         "Клиенты и филиалы с просроченной задолженностью. "
-        "Отдельно выделены долги 45+, 90+ и 120+ дней."
+        "Отдельно выделены долги 45+, 60+, 90+ и 120+ дней."
     ).classes("text-gray-500 mb-4")
 
     top_navigation()
 
-    df = query_df("""
+    clients = query_df("""
         SELECT *
         FROM core.v_client_operational_summary
         WHERE overdue_debt > 0
@@ -217,149 +124,168 @@ def overdue_page():
             total_debt DESC
     """)
 
-    if df.empty:
+    if clients.empty:
         ui.label("Просроченной задолженности нет.").classes("text-lg text-green-700")
         return
 
     branches = query_df("""
         WITH branch_debt AS (
             SELECT
-                i.client_group,
+                client_group,
 
-                SUM(i.invoice_amount) AS total_debt,
+                SUM(total_debt) AS total_debt,
 
                 SUM(
                     CASE
-                        WHEN i.is_overdue_real
-                        THEN i.invoice_amount
+                        WHEN overdue_debt > 0
+                        THEN overdue_debt
                         ELSE 0
                     END
                 ) AS overdue_debt,
 
                 SUM(
                     CASE
-                        WHEN i.is_overdue_real
-                         AND i.days_overdue_real >= 45
-                        THEN i.invoice_amount
+                        WHEN overdue_debt > 0
+                        THEN debt_45_plus
                         ELSE 0
                     END
-                ) AS overdue_45_plus,
+                ) AS debt_45_plus,
 
                 SUM(
                     CASE
-                        WHEN i.is_overdue_real
-                         AND i.days_overdue_real >= 90
-                        THEN i.invoice_amount
+                        WHEN overdue_debt > 0
+                        THEN debt_60_plus
                         ELSE 0
                     END
-                ) AS overdue_90_plus,
+                ) AS debt_60_plus,
 
                 SUM(
                     CASE
-                        WHEN i.is_overdue_real
-                         AND i.days_overdue_real >= 120
-                        THEN i.invoice_amount
+                        WHEN overdue_debt > 0
+                        THEN debt_90_plus
                         ELSE 0
                     END
-                ) AS overdue_120_plus
-            FROM core.v_invoice_detail i
-            GROUP BY i.client_group
+                ) AS debt_90_plus,
+
+                SUM(
+                    CASE
+                        WHEN overdue_debt > 0
+                        THEN debt_120_plus
+                        ELSE 0
+                    END
+                ) AS debt_120_plus,
+
+                MAX(
+                    CASE
+                        WHEN overdue_debt > 0
+                        THEN max_days_overdue
+                        ELSE 0
+                    END
+                ) AS max_days_overdue
+
+            FROM core.v_client_operational_summary
+
+            GROUP BY client_group
         )
+
         SELECT
             b.client_group,
             bh.weighted_rating,
 
             b.total_debt,
             b.overdue_debt,
-            b.overdue_45_plus,
-            b.overdue_90_plus,
-            b.overdue_120_plus,
+            b.debt_45_plus,
+            b.debt_60_plus,
+            b.debt_90_plus,
+            b.debt_120_plus,
+            b.max_days_overdue,
 
-            ROUND(b.overdue_debt / NULLIF(b.total_debt, 0) * 100, 2) AS overdue_share_pct,
-            ROUND(b.overdue_45_plus / NULLIF(b.total_debt, 0) * 100, 2) AS overdue_45_share_pct,
-            ROUND(b.overdue_90_plus / NULLIF(b.total_debt, 0) * 100, 2) AS overdue_90_share_pct,
-            ROUND(b.overdue_120_plus / NULLIF(b.total_debt, 0) * 100, 2) AS overdue_120_share_pct
+            ROUND(b.overdue_debt / NULLIF(b.total_debt, 0) * 100, 2) AS overdue_share_pct
+
         FROM branch_debt b
+
         LEFT JOIN core.v_executive_branch_health bh
             ON b.client_group = bh.client_group
+
         WHERE b.overdue_debt > 0
-        ORDER BY b.overdue_debt DESC
+
+        ORDER BY
+            b.overdue_debt DESC,
+            b.debt_90_plus DESC,
+            b.debt_120_plus DESC,
+            b.max_days_overdue DESC,
+            b.total_debt DESC
     """)
+
+    numeric_cols = [
+        "total_debt",
+        "overdue_debt",
+        "overdue_share_pct",
+        "debt_45_plus",
+        "debt_60_plus",
+        "debt_90_plus",
+        "debt_120_plus",
+        "max_days_overdue",
+        "weighted_rating",
+        "stars",
+    ]
+
+    clients = normalize_numeric_columns(clients, numeric_cols)
+    branches = normalize_numeric_columns(branches, numeric_cols)
+
+    branches = branches[branches["total_debt"] >= 1].copy()
 
     selected_branches: list[str] = []
 
-    money_cols = [
-        "total_debt",
-        "overdue_debt",
-        "overdue_45_plus",
-        "overdue_90_plus",
-        "overdue_120_plus",
-    ]
-
-    percent_cols = [
-        "overdue_share_pct",
-        "overdue_45_share_pct",
-        "overdue_90_share_pct",
-        "overdue_120_share_pct",
-    ]
-
-    for frame in [df, branches]:
-        for col in money_cols + percent_cols + ["max_days_overdue", "weighted_rating"]:
-            if col in frame.columns:
-                frame[col] = frame[col].fillna(0).astype(float)
-
-    df = prepare_money_cols(df, money_cols)
-    df = prepare_percent_cols(df, percent_cols)
-
-    branches = prepare_money_cols(branches, money_cols)
-    branches = prepare_percent_cols(branches, percent_cols)
-
-    branches["weighted_rating_fmt"] = branches["weighted_rating"].apply(
-        lambda value: "—" if pd.isna(value) else f"{float(value):.2f}"
-    )
-
     def filtered_clients() -> pd.DataFrame:
-        result = df.copy()
+        result = clients.copy()
 
         if selected_branches:
             result = result[result["client_group"].isin(selected_branches)]
 
-        value = (search_input.value or "").strip().lower() if "search_input" in locals() else ""
-
-        if value:
-            result = result[
-                result["client_id"].astype(str).str.lower().str.contains(value, na=False)
-                | result["client_name"].astype(str).str.lower().str.contains(value, na=False)
+        sort_cols = [
+            col for col in [
+                "overdue_debt",
+                "debt_90_plus",
+                "debt_120_plus",
+                "max_days_overdue",
+                "total_debt",
             ]
+            if col in result.columns
+        ]
 
-        return result.sort_values(
-            by=["overdue_debt", "debt_90_plus", "debt_120_plus"],
-            ascending=[False, False, False],
-        )
-
-    def filtered_branches() -> pd.DataFrame:
-        result = branches.copy()
-
-        result["is_selected"] = result["client_group"].isin(selected_branches)
-        result["is_dimmed"] = bool(selected_branches) & ~result["is_selected"]
+        if sort_cols:
+            result = result.sort_values(
+                by=sort_cols,
+                ascending=[False] * len(sort_cols),
+            )
 
         return result
 
+    def filtered_branches() -> pd.DataFrame:
+        return branches.sort_values(
+            by=[
+                "overdue_debt",
+                "debt_90_plus",
+                "debt_120_plus",
+                "max_days_overdue",
+                "total_debt",
+            ],
+            ascending=[False, False, False, False, False],
+        )
+
     def get_kpi_metrics() -> dict[str, float | int]:
         branch_df = branches.copy()
+        client_df = clients.copy()
 
         if selected_branches:
             branch_df = branch_df[branch_df["client_group"].isin(selected_branches)]
-
-        client_df = df.copy()
-
-        if selected_branches:
             client_df = client_df[client_df["client_group"].isin(selected_branches)]
 
         total_debt = float(branch_df["total_debt"].sum())
         overdue_debt = float(branch_df["overdue_debt"].sum())
-        overdue_90_plus = float(branch_df["overdue_90_plus"].sum())
-        overdue_120_plus = float(branch_df["overdue_120_plus"].sum())
+        debt_90_plus = float(branch_df["debt_90_plus"].sum())
+        debt_120_plus = float(branch_df["debt_120_plus"].sum())
 
         max_days = (
             int(client_df["max_days_overdue"].max())
@@ -370,78 +296,65 @@ def overdue_page():
         return {
             "total_debt": total_debt,
             "overdue_debt": overdue_debt,
-            "overdue_clients": int(client_df["client_id"].nunique()),
+            "overdue_clients": int(client_df["client_id"].nunique()) if not client_df.empty else 0,
             "overdue_share_pct": overdue_debt / total_debt * 100 if total_debt else 0,
             "max_days": max_days,
-            "overdue_90_plus": overdue_90_plus,
-            "overdue_90_share_pct": overdue_90_plus / total_debt * 100 if total_debt else 0,
-            "overdue_120_plus": overdue_120_plus,
-            "overdue_120_share_pct": overdue_120_plus / total_debt * 100 if total_debt else 0,
+            "debt_90_plus": debt_90_plus,
+            "debt_90_share_pct": debt_90_plus / total_debt * 100 if total_debt else 0,
+            "debt_120_plus": debt_120_plus,
+            "debt_120_share_pct": debt_120_plus / total_debt * 100 if total_debt else 0,
         }
 
     initial_kpi = get_kpi_metrics()
 
     with ui.row().classes("gap-4 mb-6"):
-        compact_kpi(
+        overdue_label, overdue_subtitle = compact_kpi(
             "Просрочено",
             money(initial_kpi["overdue_debt"]),
             f"{percent(initial_kpi['overdue_share_pct'])} портфеля",
             "text-red-700",
         )
 
-        compact_kpi(
+        overdue_clients_label, overdue_clients_subtitle = compact_kpi(
             "Клиентов с просрочкой",
             str(initial_kpi["overdue_clients"]),
         )
 
-        compact_kpi(
+        max_days_label, max_days_subtitle = compact_kpi(
             "Макс. дней просрочки",
             str(initial_kpi["max_days"]),
         )
 
-        compact_kpi(
+        debt_90_label, debt_90_subtitle = compact_kpi(
             "90+ просрочено",
-            money(initial_kpi["overdue_90_plus"]),
-            f"{percent(initial_kpi['overdue_90_share_pct'])} портфеля",
+            money(initial_kpi["debt_90_plus"]),
+            f"{percent(initial_kpi['debt_90_share_pct'])} портфеля",
             "text-red-700",
         )
 
-        compact_kpi(
+        debt_120_label, debt_120_subtitle = compact_kpi(
             "120+ просрочено",
-            money(initial_kpi["overdue_120_plus"]),
-            f"{percent(initial_kpi['overdue_120_share_pct'])} портфеля",
+            money(initial_kpi["debt_120_plus"]),
+            f"{percent(initial_kpi['debt_120_share_pct'])} портфеля",
             "text-red-700",
         )
-
-    ui.label("Сводка по филиалам").classes("text-xl font-bold mt-6 mb-1")
-    ui.label(
-        "Агрегация просроченной задолженности по филиалам. "
-        "Нажатие на филиал ограничивает клиентскую таблицу выбранным филиалом."
-    ).classes("text-sm text-gray-500 mb-3")
 
     with ui.row().classes("items-center gap-4 mb-2"):
         selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
         reset_branch_button = ui.button("ВСЕ ФИЛИАЛЫ").props("flat color=primary")
 
-    branch_table = ui.table(
-        columns=[
-            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
-            {"name": "rating", "label": "Рейтинг", "field": "weighted_rating", "align": "center", "sortable": True},
-            {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
-            {"name": "overdue_debt", "label": "Просрочено", "field": "overdue_debt", "align": "right", "sortable": True},
-            {"name": "overdue_share_pct", "label": "%", "field": "overdue_share_pct", "align": "right", "sortable": True},
-            {"name": "overdue_45_plus", "label": "45+", "field": "overdue_45_plus", "align": "right", "sortable": True},
-            {"name": "overdue_45_share_pct", "label": "% 45+", "field": "overdue_45_share_pct", "align": "right", "sortable": True},
-            {"name": "overdue_90_plus", "label": "90+", "field": "overdue_90_plus", "align": "right", "sortable": True},
-            {"name": "overdue_90_share_pct", "label": "% 90+", "field": "overdue_90_share_pct", "align": "right", "sortable": True},
-            {"name": "overdue_120_plus", "label": "120+", "field": "overdue_120_plus", "align": "right", "sortable": True},
-            {"name": "overdue_120_share_pct", "label": "% 120+", "field": "overdue_120_share_pct", "align": "right", "sortable": True},
-        ],
-        rows=filtered_branches().to_dict("records"),
-        pagination={"rowsPerPage": 20},
-    ).classes("w-full mb-6")
-    branch_table.props(table_page_props())
-    add_branch_summary_slots(branch_table)
+    branch_table = render_branch_table(
+        branches=filtered_branches(),
+        title="Сводка по филиалам",
+        subtitle=(
+            "Агрегация просроченной задолженности по филиалам. "
+            "Нажатие на филиал ограничивает клиентскую таблицу выбранным филиалом."
+        ),
+        mode="operational",
+        selected_branches=selected_branches,
+        rows_per_page=20,
+        visible_columns=OVERDUE_BRANCH_COLUMNS,
+    )
 
     client_table = render_clients_table(
         clients=filtered_clients(),
@@ -449,27 +362,40 @@ def overdue_page():
         show_branch=True,
         show_search=True,
         from_route="overdue",
-        visible_columns=[
-            "client_group",
-            "client",
-            "rating",
-            "total_debt",
-            "overdue_debt",
-            "overdue_share_pct",
-            "debt_45_plus",
-            "debt_60_plus",
-            "debt_90_plus",
-            "debt_120_plus",
-            "max_days_overdue",
-        ],
+        visible_columns=OVERDUE_CLIENT_COLUMNS,
     )
 
     def update_kpi_cards():
         metrics = get_kpi_metrics()
 
-        # KPI cards are static NiceGUI elements in this page version.
-        # The table filters are updated reactively; KPI refresh can be
-        # centralized later together with UI unification.
+        overdue_label.text = money(metrics["overdue_debt"])
+        overdue_subtitle.text = f"{percent(metrics['overdue_share_pct'])} портфеля"
+
+        overdue_clients_label.text = str(metrics["overdue_clients"])
+        overdue_clients_subtitle.text = ""
+
+        max_days_label.text = str(metrics["max_days"])
+        max_days_subtitle.text = ""
+
+        debt_90_label.text = money(metrics["debt_90_plus"])
+        debt_90_subtitle.text = f"{percent(metrics['debt_90_share_pct'])} портфеля"
+
+        debt_120_label.text = money(metrics["debt_120_plus"])
+        debt_120_subtitle.text = f"{percent(metrics['debt_120_share_pct'])} портфеля"
+
+        for label in [
+            overdue_label,
+            overdue_subtitle,
+            overdue_clients_label,
+            overdue_clients_subtitle,
+            max_days_label,
+            max_days_subtitle,
+            debt_90_label,
+            debt_90_subtitle,
+            debt_120_label,
+            debt_120_subtitle,
+        ]:
+            label.update()
 
     def apply_filters():
         if selected_branches:
@@ -479,12 +405,14 @@ def overdue_page():
 
         selected_branch_label.update()
 
-        branch_table.rows = filtered_branches().to_dict("records")
-        branch_table.update()
+        if branch_table is not None:
+            branch_table.refresh_branches(
+                filtered_branches(),
+                selected_branches=selected_branches,
+            )
 
         if client_table is not None:
-            client_table.rows = filtered_clients().to_dict("records")
-            client_table.update()
+            client_table.refresh_clients(filtered_clients())
 
         update_kpi_cards()
 
@@ -502,15 +430,24 @@ def overdue_page():
         selected_branches.clear()
         apply_filters()
 
-    branch_table.on("branch_click", toggle_branch)
-    reset_branch_button.on_click(reset_branch_filter)
-    
+    def open_branch_card(event):
+        branch = event.args
+
+        if branch:
+            ui.navigate.to(f"/branch/{quote(str(branch))}?from=/overdue")
+
     def open_client(event):
         ui.navigate.to(f"/client/{event.args}?from=overdue")
 
-    def open_branch(event):
+    def open_branch_from_client_table(event):
         ui.navigate.to(f"/branch/{quote(str(event.args))}?from=/overdue")
+
+    if branch_table is not None:
+        branch_table.on("branch_click", toggle_branch)
+        branch_table.on("branch_open", open_branch_card)
 
     if client_table is not None:
         client_table.on("client_click", open_client)
-        client_table.on("branch_click", open_branch)
+        client_table.on("branch_click", open_branch_from_client_table)
+
+    reset_branch_button.on_click(reset_branch_filter)
