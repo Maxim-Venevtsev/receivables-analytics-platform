@@ -8,8 +8,8 @@ from nicegui import ui
 from sqlalchemy import create_engine, text
 
 from src.app.components.navigation import top_navigation
-from src.app.components.rating_stars import rating_stars_html
 from src.app.components.clients_table import render_clients_table
+from src.app.components.branch_table import render_branch_table
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -19,6 +19,56 @@ engine = create_engine(
     f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@"
     f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
 )
+
+
+DUE_TODAY_CLIENT_COLUMNS = [
+    "client_group",
+    "client",
+    "rating",
+    "total_debt",
+    "due_today",
+    "due_today_share_pct",
+    "shifted_amount",
+    "shifted_share_pct",
+    "overdue_debt",
+]
+
+
+DUE_TODAY_BRANCH_COLUMNS = [
+    "client_group",
+    "rating",
+    "total_debt",
+    "due_today",
+    "due_today_share_pct",
+    "shifted_amount",
+    "shifted_share_pct",
+    "overdue_debt",
+]
+
+
+DUE_SOON_CLIENT_COLUMNS = [
+    "client_group",
+    "client",
+    "rating",
+    "total_debt",
+    "due_soon_only",
+    "due_soon_share_pct",
+    "shifted_amount",
+    "shifted_share_pct",
+    "overdue_debt",
+]
+
+
+DUE_SOON_BRANCH_COLUMNS = [
+    "client_group",
+    "rating",
+    "total_debt",
+    "due_soon_only",
+    "due_soon_share_pct",
+    "shifted_amount",
+    "shifted_share_pct",
+    "overdue_debt",
+]
 
 
 def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
@@ -32,160 +82,83 @@ def money(value) -> str:
     return f"{float(value):,.0f}".replace(",", " ")
 
 
-def money_precise(value) -> str:
-    if pd.isna(value):
-        return "0,00"
-    return f"{float(value):,.2f}".replace(",", " ").replace(".", ",")
-
-
 def percent(value) -> str:
     if pd.isna(value):
         return "0%"
     return f"{float(value):.1f}%"
 
 
-def compact_kpi(title: str, value: str, subtitle: str = "", color_class: str = "text-gray-900"):
+def compact_kpi(
+    title: str,
+    value: str,
+    subtitle: str = "",
+    color_class: str = "text-gray-900",
+):
+    value_label = None
+    subtitle_label = None
+
     with ui.card().classes("w-64 h-36 p-4"):
         with ui.column().classes("w-full h-full items-center justify-between text-center"):
             ui.label(title).classes("text-sm text-gray-500 h-6 flex items-center justify-center")
-            ui.label(value).classes(
+            value_label = ui.label(value).classes(
                 f"text-2xl font-bold h-10 flex items-center justify-center {color_class}"
             )
-            ui.label(subtitle).classes("text-sm text-gray-500 h-8 flex items-center justify-center")
+            subtitle_label = ui.label(subtitle).classes(
+                "text-sm text-gray-500 h-8 flex items-center justify-center"
+            )
+
+    return value_label, subtitle_label
 
 
-def table_page_props() -> str:
-    return 'rows-per-page-options="[20, 50, 100]"'
-
-
-def prepare_money_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+def normalize_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     result = df.copy()
-    for col in cols:
-        if col in result.columns:
-            result[f"{col}_fmt"] = result[col].apply(money_precise)
+
+    for col in columns:
+        if col not in result.columns:
+            result[col] = 0
+
+        result[col] = pd.to_numeric(
+            result[col],
+            errors="coerce",
+        ).fillna(0)
+
     return result
-
-
-def prepare_percent_cols(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-    result = df.copy()
-    for col in cols:
-        if col in result.columns:
-            result[f"{col}_fmt"] = result[col].apply(percent)
-    return result
-
-
-def add_branch_slots(table):
-    table.add_slot(
-        "body-cell-client_group",
-        """
-        <q-td :props="props" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            <q-btn
-                dense
-                :flat="!props.row.is_selected"
-                :unelevated="props.row.is_selected"
-                :outline="!props.row.is_selected"
-                :color="props.row.is_selected ? 'primary' : 'grey-7'"
-                :label="props.row.client_group"
-                @click="$parent.$emit('branch_click', props.row.client_group)"
-            />
-        </q-td>
-        """,
-    )
-
-    table.add_slot(
-        "body-cell-rating",
-        """
-        <q-td :props="props" class="text-center" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            {{ props.row.weighted_rating_fmt }}
-        </q-td>
-        """,
-    )
-
-    for col in ["total_debt", "target_amount", "shifted_amount"]:
-        table.add_slot(
-            f"body-cell-{col}",
-            f"""
-            <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-                {{{{ props.row.{col}_fmt }}}}
-            </q-td>
-            """,
-        )
-
-    table.add_slot(
-        "body-cell-target_share_pct",
-        """
-        <q-td :props="props" class="text-right" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            <q-badge
-                :color="props.row.target_share_pct > 20 ? 'red' : props.row.target_share_pct > 0 ? 'orange' : 'green'"
-                :label="props.row.target_share_pct_fmt"
-            />
-        </q-td>
-        """,
-    )
-
-
-def add_client_slots(table):
-    table.add_slot(
-        "body",
-        """
-        <q-tr :props="props">
-            <q-td v-for="col in props.cols" :key="col.name" :props="props">
-
-                <template v-if="col.name === 'client'">
-                    <a :href="props.row.client_url" class="text-blue-600 hover:underline font-medium">
-                        {{ props.row.client_display }}
-                    </a>
-                </template>
-
-                <template v-else-if="col.name === 'rating'">
-                    <span v-html="props.row.rating_html"></span>
-                </template>
-
-                <template v-else-if="['total_debt', 'target_amount', 'shifted_amount', 'overdue_debt'].includes(col.name)">
-                    {{ props.row[col.name + '_fmt'] }}
-                </template>
-
-                <template v-else-if="col.name === 'target_share_pct'">
-                    <q-badge
-                        :color="props.row.target_share_pct > 20 ? 'red' : props.row.target_share_pct > 0 ? 'orange' : 'green'"
-                        :label="props.row.target_share_pct_fmt"
-                    />
-                </template>
-
-                <template v-else>
-                    {{ col.value }}
-                </template>
-
-            </q-td>
-        </q-tr>
-        """,
-    )
 
 
 def load_forecast_data(mode: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    is_today = mode == "today"
+
     target_condition = (
         "i.is_due_today"
-        if mode == "today"
+        if is_today
         else "(i.is_due_in_3_days AND NOT i.is_due_today)"
     )
 
-    target_amount_col = "due_today" if mode == "today" else "due_soon_only"
+    target_amount_col = "due_today" if is_today else "due_soon_only"
+    target_share_col = "due_today_share_pct" if is_today else "due_soon_share_pct"
 
     clients_df = query_df(f"""
         WITH target_invoices AS (
             SELECT
                 i.client_id,
-                COUNT(*) FILTER (WHERE {target_condition}) AS target_invoice_count
+                COUNT(*) FILTER (
+                    WHERE {target_condition}
+                ) AS target_invoice_count
             FROM core.v_invoice_detail i
             GROUP BY i.client_id
         )
+
         SELECT
             s.*,
             COALESCE(t.target_invoice_count, 0) AS target_invoice_count
+
         FROM core.v_client_operational_summary s
+
         LEFT JOIN target_invoices t
             ON s.client_id = t.client_id
+
         WHERE s.{target_amount_col} > 0
+
         ORDER BY
             s.{target_amount_col} DESC,
             s.shifted_amount DESC,
@@ -193,47 +166,109 @@ def load_forecast_data(mode: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """)
 
     branches_df = query_df(f"""
-        WITH branch_debt AS (
+        WITH target_invoices AS (
             SELECT
-                i.client_group,
-
-                SUM(i.invoice_amount) AS total_debt,
-
-                SUM(CASE WHEN {target_condition} THEN i.invoice_amount ELSE 0 END) AS target_amount,
-
-                SUM(
-                    CASE
-                        WHEN {target_condition}
-                         AND COALESCE(ts.term_shift_count, 0) > 0
-                        THEN i.invoice_amount
-                        ELSE 0
-                    END
-                ) AS shifted_amount,
-
-                COUNT(DISTINCT i.client_id) FILTER (WHERE {target_condition}) AS clients_to_control
+                i.client_id,
+                COUNT(*) FILTER (
+                    WHERE {target_condition}
+                ) AS target_invoice_count
             FROM core.v_invoice_detail i
-            LEFT JOIN core.v_term_shift_invoice_summary ts
-                ON i.client_id = ts.client_id
-               AND i.print_invoice_number = ts.print_invoice_number
-               AND i.order_number = ts.order_number
-               AND i.invoice_date = ts.invoice_date
-            GROUP BY i.client_group
+            GROUP BY i.client_id
+        ),
+
+        client_summary AS (
+            SELECT
+                s.*,
+                COALESCE(t.target_invoice_count, 0) AS target_invoice_count
+            FROM core.v_client_operational_summary s
+            LEFT JOIN target_invoices t
+                ON s.client_id = t.client_id
+        ),
+
+        branch_agg AS (
+            SELECT
+                client_group,
+
+                SUM(total_debt) AS total_debt,
+                SUM(due_today) AS due_today,
+                SUM(due_soon_only) AS due_soon_only,
+                SUM(shifted_amount) AS shifted_amount,
+                SUM(overdue_debt) AS overdue_debt,
+
+                ROUND(
+                    SUM(due_today)
+                    / NULLIF(SUM(total_debt), 0)
+                    * 100,
+                    2
+                ) AS due_today_share_pct,
+
+                ROUND(
+                    SUM(due_soon_only)
+                    / NULLIF(SUM(total_debt), 0)
+                    * 100,
+                    2
+                ) AS due_soon_share_pct,
+
+                ROUND(
+                    SUM(shifted_amount)
+                    / NULLIF(SUM(total_debt), 0)
+                    * 100,
+                    2
+                ) AS shifted_share_pct,
+
+                ROUND(
+                    SUM(overdue_debt)
+                    / NULLIF(SUM(total_debt), 0)
+                    * 100,
+                    2
+                ) AS overdue_share_pct,
+
+                SUM(target_invoice_count) AS target_invoice_count,
+
+                COUNT(*) FILTER (
+                    WHERE {target_amount_col} > 0
+                ) AS clients_to_control,
+
+                CASE
+                    WHEN SUM(total_debt) > 0
+                    THEN
+                        SUM(COALESCE(stars, 0)::numeric * total_debt)
+                        / SUM(total_debt)
+                    ELSE NULL::numeric
+                END AS weighted_rating
+
+            FROM client_summary
+
+            GROUP BY client_group
         )
+
         SELECT
-            b.client_group,
-            bh.weighted_rating,
+            client_group,
+            ROUND(weighted_rating::numeric, 1) AS weighted_rating,
 
-            b.total_debt,
-            b.target_amount,
-            b.shifted_amount,
-            b.clients_to_control,
+            total_debt,
+            due_today,
+            due_soon_only,
+            due_today_share_pct,
+            due_soon_share_pct,
 
-            ROUND(b.target_amount / NULLIF(b.total_debt, 0) * 100, 2) AS target_share_pct
-        FROM branch_debt b
-        LEFT JOIN core.v_executive_branch_health bh
-            ON b.client_group = bh.client_group
-        WHERE b.target_amount > 0
-        ORDER BY b.target_amount DESC
+            shifted_amount,
+            shifted_share_pct,
+
+            overdue_debt,
+            overdue_share_pct,
+
+            target_invoice_count,
+            clients_to_control
+
+        FROM branch_agg
+
+        WHERE {target_amount_col} > 0
+
+        ORDER BY
+            {target_amount_col} DESC,
+            shifted_amount DESC,
+            total_debt DESC
     """)
 
     return clients_df, branches_df
@@ -244,6 +279,19 @@ def render_forecast_page(mode: str):
 
     page_title = "К оплате сегодня" if is_today else "К оплате в ближайшие три дня"
     target_label = "К оплате сегодня" if is_today else "К оплате в ближайшие три дня"
+    target_amount_col = "due_today" if is_today else "due_soon_only"
+
+    client_columns = (
+        DUE_TODAY_CLIENT_COLUMNS
+        if is_today
+        else DUE_SOON_CLIENT_COLUMNS
+    )
+
+    branch_columns = (
+        DUE_TODAY_BRANCH_COLUMNS
+        if is_today
+        else DUE_SOON_BRANCH_COLUMNS
+    )
 
     ui.label(page_title).classes("text-3xl font-bold mb-2")
     ui.label(
@@ -263,25 +311,28 @@ def render_forecast_page(mode: str):
         ui.label(message).classes("text-lg text-green-700")
         return
 
+    numeric_cols = [
+        "total_debt",
+        "due_today",
+        "due_soon_only",
+        "due_today_share_pct",
+        "due_soon_share_pct",
+        "shifted_amount",
+        "shifted_share_pct",
+        "overdue_debt",
+        "overdue_share_pct",
+        "weighted_rating",
+        "stars",
+        "clients_to_control",
+        "target_invoice_count",
+    ]
+
+    clients_df = normalize_numeric_columns(clients_df, numeric_cols)
+    branches_df = normalize_numeric_columns(branches_df, numeric_cols)
+
+    branches_df = branches_df[branches_df["total_debt"] >= 1].copy()
+
     selected_branches: list[str] = []
-
-    money_cols = ["total_debt", "target_amount", "shifted_amount", "overdue_debt"]
-    percent_cols = ["target_share_pct"]
-
-    for frame in [clients_df, branches_df]:
-        for col in money_cols + percent_cols + ["weighted_rating", "clients_to_control", "target_invoice_count"]:
-            if col in frame.columns:
-                frame[col] = frame[col].fillna(0).astype(float)
-
-    clients_df = prepare_money_cols(clients_df, money_cols)
-    clients_df = prepare_percent_cols(clients_df, percent_cols)
-
-    branches_df = prepare_money_cols(branches_df, ["total_debt", "target_amount", "shifted_amount"])
-    branches_df = prepare_percent_cols(branches_df, percent_cols)
-
-    branches_df["weighted_rating_fmt"] = branches_df["weighted_rating"].apply(
-        lambda value: "—" if pd.isna(value) else f"{float(value):.2f}"
-    )
 
     def filtered_clients() -> pd.DataFrame:
         result = clients_df.copy()
@@ -289,113 +340,97 @@ def render_forecast_page(mode: str):
         if selected_branches:
             result = result[result["client_group"].isin(selected_branches)]
 
-        value = (search_input.value or "").strip().lower() if "search_input" in locals() else ""
-
-        if value:
-            result = result[
-                result["client_id"].astype(str).str.lower().str.contains(value, na=False)
-                | result["client_name"].astype(str).str.lower().str.contains(value, na=False)
+        sort_cols = [
+            col for col in [
+                target_amount_col,
+                "shifted_amount",
+                "overdue_debt",
+                "total_debt",
             ]
+            if col in result.columns
+        ]
 
-        sort_amount_col = "due_today" if is_today else "due_soon_only"
+        if sort_cols:
+            result = result.sort_values(
+                by=sort_cols,
+                ascending=[False] * len(sort_cols),
+            )
 
-        return result.sort_values(
-            by=[sort_amount_col, "shifted_amount", "total_debt"],
-            ascending=[False, False, False],
-        )
+        return result
 
     def filtered_branches() -> pd.DataFrame:
-        result = branches_df.copy()
-        result["is_selected"] = result["client_group"].isin(selected_branches)
-        result["is_dimmed"] = bool(selected_branches) & ~result["is_selected"]
-        return result
+        return branches_df.sort_values(
+            by=[
+                target_amount_col,
+                "shifted_amount",
+                "overdue_debt",
+                "total_debt",
+            ],
+            ascending=[False, False, False, False],
+        )
 
     def kpi_metrics() -> dict:
         bdf = branches_df.copy()
-
-        if selected_branches:
-            bdf = bdf[bdf["client_group"].isin(selected_branches)]
-
         cdf = clients_df.copy()
 
         if selected_branches:
+            bdf = bdf[bdf["client_group"].isin(selected_branches)]
             cdf = cdf[cdf["client_group"].isin(selected_branches)]
 
         total_debt = float(bdf["total_debt"].sum())
-        target_amount = float(bdf["target_amount"].sum())
-        shifted_amount = float(bdf["shifted_amount"].sum())
+        target_amount = float(bdf[target_amount_col].sum())
+        shifted_amount = float(cdf["shifted_amount"].sum())
 
         return {
             "target_amount": target_amount,
             "target_share_pct": target_amount / total_debt * 100 if total_debt else 0,
-            "client_count": int(cdf["client_id"].nunique()),
-            "invoice_count": int(cdf["target_invoice_count"].sum()),
+            "client_count": int(cdf["client_id"].nunique()) if not cdf.empty else 0,
+            "invoice_count": int(cdf["target_invoice_count"].sum()) if not cdf.empty else 0,
             "shifted_amount": shifted_amount,
         }
 
     k = kpi_metrics()
 
     with ui.row().classes("gap-4 mb-6"):
-        compact_kpi(
+        target_label_value, target_label_subtitle = compact_kpi(
             target_label,
             money(k["target_amount"]),
             f"{percent(k['target_share_pct'])} портфеля",
             "text-orange-700" if is_today else "text-yellow-700",
         )
-        compact_kpi("Клиентов к контролю", str(k["client_count"]))
-        compact_kpi("Накладных к контролю", str(k["invoice_count"]))
-        compact_kpi("Переносы", money(k["shifted_amount"]), "по накладным в выборке", "text-red-700")
 
-    ui.label("Сводка по филиалам").classes("text-xl font-bold mt-6 mb-1")
-    ui.label(
-        "Агрегация платежей к контролю по филиалам. "
-        "Нажатие на филиал ограничивает клиентскую таблицу выбранным филиалом."
-    ).classes("text-sm text-gray-500 mb-3")
+        client_count_value, client_count_subtitle = compact_kpi(
+            "Клиентов к контролю",
+            str(k["client_count"]),
+        )
+
+        invoice_count_value, invoice_count_subtitle = compact_kpi(
+            "Накладных к контролю",
+            str(k["invoice_count"]),
+        )
+
+        shifted_value, shifted_subtitle = compact_kpi(
+            "Переносы",
+            money(k["shifted_amount"]),
+            "по контрагентам в выборке",
+            "text-red-700",
+        )
 
     with ui.row().classes("items-center gap-4 mb-2"):
         selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
         reset_branch_button = ui.button("ВСЕ ФИЛИАЛЫ").props("flat color=primary")
 
-    branch_table = ui.table(
-        columns=[
-            {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
-            {"name": "rating", "label": "Рейтинг", "field": "weighted_rating", "align": "center", "sortable": True},
-            {"name": "total_debt", "label": "Весь долг", "field": "total_debt", "align": "right", "sortable": True},
-            {"name": "target_amount", "label": target_label, "field": "target_amount", "align": "right", "sortable": True},
-            {"name": "target_share_pct", "label": "%", "field": "target_share_pct", "align": "right", "sortable": True},
-            {"name": "shifted_amount", "label": "Переносы", "field": "shifted_amount", "align": "right", "sortable": True},
-            {"name": "clients_to_control", "label": "Клиентов к контролю", "field": "clients_to_control", "align": "right", "sortable": True},
-        ],
-        rows=filtered_branches().to_dict("records"),
-        pagination={"rowsPerPage": 20},
-    ).classes("w-full mb-6")
-    branch_table.props(table_page_props())
-    add_branch_slots(branch_table)
-
-    visible_columns = (
-        [
-            "client_group",
-            "client",
-            "rating",
-            "total_debt",
-            "due_today",
-            "due_today_share_pct",
-            "shifted_amount",
-            "shifted_share_pct",
-            "overdue_debt",
-        ]
-        if is_today
-        else [
-            "client_group",
-            "client",
-            "rating",
-            "total_debt",
-            "due_soon_only",
-            "due_soon_share_pct",
-            "shifted_amount",
-            "shifted_share_pct",
-            "overdue_debt",
-        ]
+    branch_table = render_branch_table(
+        branches=filtered_branches(),
+        title="Сводка по филиалам",
+        subtitle=(
+            "Агрегация платежей к контролю по филиалам. "
+            "Нажатие на филиал ограничивает клиентскую таблицу выбранным филиалом."
+        ),
+        mode="operational",
+        selected_branches=selected_branches,
+        rows_per_page=20,
+        visible_columns=branch_columns,
     )
 
     client_table = render_clients_table(
@@ -405,8 +440,35 @@ def render_forecast_page(mode: str):
         show_branch=True,
         show_search=True,
         from_route="due-today" if is_today else "due-soon",
-        visible_columns=visible_columns,
+        visible_columns=client_columns,
     )
+
+    def update_kpi_cards():
+        current = kpi_metrics()
+
+        target_label_value.text = money(current["target_amount"])
+        target_label_subtitle.text = f"{percent(current['target_share_pct'])} портфеля"
+
+        client_count_value.text = str(current["client_count"])
+        client_count_subtitle.text = ""
+
+        invoice_count_value.text = str(current["invoice_count"])
+        invoice_count_subtitle.text = ""
+
+        shifted_value.text = money(current["shifted_amount"])
+        shifted_subtitle.text = "по контрагентам в выборке"
+
+        for label in [
+            target_label_value,
+            target_label_subtitle,
+            client_count_value,
+            client_count_subtitle,
+            invoice_count_value,
+            invoice_count_subtitle,
+            shifted_value,
+            shifted_subtitle,
+        ]:
+            label.update()
 
     def apply_filters():
         if selected_branches:
@@ -416,11 +478,16 @@ def render_forecast_page(mode: str):
 
         selected_branch_label.update()
 
-        branch_table.rows = filtered_branches().to_dict("records")
-        branch_table.update()
+        if branch_table is not None:
+            branch_table.refresh_branches(
+                filtered_branches(),
+                selected_branches=selected_branches,
+            )
 
         if client_table is not None:
             client_table.refresh_clients(filtered_clients())
+
+        update_kpi_cards()
 
     def toggle_branch(event):
         branch = event.args
@@ -436,20 +503,32 @@ def render_forecast_page(mode: str):
         selected_branches.clear()
         apply_filters()
 
-    branch_table.on("branch_click", toggle_branch)
-    reset_branch_button.on_click(reset_branch_filter)
+    def open_branch_card(event):
+        branch = event.args
+
+        if not branch:
+            return
+
+        origin = "/due-today" if is_today else "/due-soon"
+        ui.navigate.to(f"/branch/{quote(str(branch))}?from={origin}")
 
     def open_client(event):
         origin = "due-today" if is_today else "due-soon"
         ui.navigate.to(f"/client/{event.args}?from={origin}")
 
-    def open_branch(event):
+    def open_branch_from_client_table(event):
         origin = "/due-today" if is_today else "/due-soon"
         ui.navigate.to(f"/branch/{quote(str(event.args))}?from={origin}")
 
+    if branch_table is not None:
+        branch_table.on("branch_click", toggle_branch)
+        branch_table.on("branch_open", open_branch_card)
+
     if client_table is not None:
         client_table.on("client_click", open_client)
-        client_table.on("branch_click", open_branch)
+        client_table.on("branch_click", open_branch_from_client_table)
+
+    reset_branch_button.on_click(reset_branch_filter)
 
 
 @ui.page("/due-today")

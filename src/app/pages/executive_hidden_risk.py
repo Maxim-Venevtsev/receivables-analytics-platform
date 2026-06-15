@@ -38,7 +38,7 @@ def compact_kpi(title: str, value: str, subtitle: str = ""):
 def executive_hidden_risk_page():
     ui.label("Скрытый риск").classes("text-3xl font-bold mb-2")
     ui.label(
-        "Клиенты с формально непросроченной задолженностью, но с подозрительно длинными отсрочками"
+        "Клиенты с низким рейтингом и длинными отсрочками"
     ).classes("text-gray-500 mb-4")
 
     top_navigation()

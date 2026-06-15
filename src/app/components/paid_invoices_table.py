@@ -13,6 +13,10 @@ def _date_fmt(value) -> str:
         return ""
     return pd.to_datetime(value).strftime("%d.%m.%Y")
 
+def _date_sort(value) -> str:
+    if pd.isna(value):
+        return ""
+    return pd.to_datetime(value).strftime("%Y-%m-%d")
 
 def _int_fmt(value) -> str:
     if pd.isna(value):
@@ -82,6 +86,9 @@ def _prepare_rows(
     df["due_date_fmt"] = df["due_date"].apply(_date_fmt)
     df["estimated_payment_date_fmt"] = df["estimated_payment_date"].apply(_date_fmt)
 
+    df["invoice_date_sort"] = df["invoice_date"].apply(_date_sort)
+    df["due_date_sort"] = df["due_date"].apply(_date_sort)
+    df["estimated_payment_date_sort"] = df["estimated_payment_date"].apply(_date_sort)
     df["paid_amount_fmt"] = df["paid_amount_detected"].apply(_money_precise)
     df["payment_term_days_fmt"] = df["payment_term_days"].apply(_int_fmt)
     df["actual_payment_term_days_fmt"] = df["actual_payment_term_days"].apply(_int_fmt)
@@ -160,18 +167,18 @@ def render_paid_invoices_table(
         })
 
     columns.extend([
-        {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_fmt", "sortable": True},
+        {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_sort", "sortable": True},
         {"name": "order_number", "label": "Номер заказа", "field": "order_number", "sortable": True},
         {"name": "print_invoice_number", "label": "Номер накладной", "field": "print_invoice_number", "sortable": True},
         {"name": "analytics_type", "label": "Аналитика", "field": "analytics_type", "sortable": True},
-        {"name": "due_date", "label": "Оплатить до", "field": "due_date_fmt", "sortable": True},
-        {"name": "payment_term_days", "label": "Отсрочка", "field": "payment_term_days_fmt", "align": "center", "sortable": True},
-        {"name": "estimated_payment_date", "label": "Дата оплаты", "field": "estimated_payment_date_fmt", "sortable": True},
-        {"name": "actual_payment_term_days", "label": "Возраст", "field": "actual_payment_term_days_fmt", "align": "right", "sortable": True},
+        {"name": "due_date", "label": "Оплатить до", "field": "due_date_sort", "sortable": True},
+        {"name": "payment_term_days", "label": "Отсрочка", "field": "payment_term_days", "align": "center", "sortable": True},
+        {"name": "estimated_payment_date", "label": "Дата оплаты", "field": "estimated_payment_date_sort", "sortable": True},
+        {"name": "actual_payment_term_days", "label": "Возраст", "field": "actual_payment_term_days", "align": "right", "sortable": True},
         {"name": "paid_behavior", "label": "Дисциплина", "field": "paid_behavior_label", "align": "center", "sortable": True},
-        {"name": "payment_delay", "label": "Просрочка", "field": "payment_delay_fmt", "align": "center", "sortable": True},
+        {"name": "payment_delay", "label": "Просрочка", "field": "days_vs_due_date", "align": "center", "sortable": True},
         {"name": "term_shift_fmt", "label": "Переносы", "field": "term_shift_fmt", "align": "center"},
-        {"name": "paid_amount", "label": "Оплачено", "field": "paid_amount_fmt", "align": "right", "sortable": True},
+        {"name": "paid_amount", "label": "Оплачено", "field": "paid_amount_detected", "align": "right", "sortable": True},
         {"name": "payment_event_type", "label": "Тип", "field": "payment_event_type_label", "align": "center", "sortable": True},
     ])
 
@@ -236,7 +243,7 @@ def render_paid_invoices_table(
                                         ? 'red'
                                         : 'dark'
                         "
-                        :label="col.value"
+                        :label="props.row.payment_delay_fmt"
                     />
                 </template>
 
@@ -254,6 +261,30 @@ def render_paid_invoices_table(
                         :color="props.row.payment_event_type === 'FULL' ? 'green' : 'blue'"
                         :label="col.value"
                     />
+                </template>
+
+                <template v-else-if="col.name === 'invoice_date'">
+                    {{ props.row.invoice_date_fmt }}
+                </template>
+
+                <template v-else-if="col.name === 'due_date'">
+                    {{ props.row.due_date_fmt }}
+                </template>
+
+                <template v-else-if="col.name === 'estimated_payment_date'">
+                    {{ props.row.estimated_payment_date_fmt }}
+                </template>
+
+                <template v-else-if="col.name === 'payment_term_days'">
+                    {{ props.row.payment_term_days_fmt }}
+                </template>
+
+                <template v-else-if="col.name === 'actual_payment_term_days'">
+                    {{ props.row.actual_payment_term_days_fmt }}
+                </template>
+
+                <template v-else-if="col.name === 'paid_amount'">
+                    {{ props.row.paid_amount_fmt }}
                 </template>
 
                 <template v-else>

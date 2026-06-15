@@ -61,6 +61,9 @@ def _build_columns(visible_columns: list[str]) -> list[dict]:
         if key == "repeated_shift_invoice_count":
             column["label"] = "Кол-во повторных переносов"
 
+        if key == "last_shift_date":
+            column["field"] = "last_shift_date_sort"
+
         columns.append(column)
 
     return columns
@@ -112,7 +115,17 @@ def _prepare_branch_rows(df: pd.DataFrame) -> pd.DataFrame:
 
     if "last_shift_date" not in result.columns:
         result["last_shift_date"] = pd.NaT
-    result["last_shift_date_fmt"] = result["last_shift_date"].apply(_date_fmt)
+
+    result["last_shift_date_dt"] = pd.to_datetime(
+        result["last_shift_date"],
+        errors="coerce",
+    )
+
+    result["last_shift_date_fmt"] = result["last_shift_date_dt"].apply(_date_fmt)
+
+    result["last_shift_date_sort"] = result["last_shift_date_dt"].apply(
+        lambda value: "" if pd.isna(value) else value.strftime("%Y-%m-%d")
+    )
 
     stars_source = (
         pd.to_numeric(result["stars"], errors="coerce")

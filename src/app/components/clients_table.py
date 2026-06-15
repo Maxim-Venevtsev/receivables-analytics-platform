@@ -171,10 +171,10 @@ COLUMN_DEFS = {
         "align": "right",
         "sortable": True,
     },
-    "last_shift_date": {
+        "last_shift_date": {
         "name": "last_shift_date",
         "label": "Посл. перенос",
-        "field": "last_shift_date_fmt",
+        "field": "last_shift_date_sort",
         "align": "center",
         "sortable": True,
     },
@@ -440,7 +440,18 @@ def _prepare_rows(
 
     if "last_shift_date" not in df.columns:
         df["last_shift_date"] = pd.NaT
-    df["last_shift_date_fmt"] = df["last_shift_date"].apply(_date_fmt)
+
+    last_shift_date_dt = pd.to_datetime(
+        df["last_shift_date"],
+        errors="coerce",
+    )
+
+    df["last_shift_date_fmt"] = last_shift_date_dt.apply(_date_fmt)
+
+    df["last_shift_date_sort"] = last_shift_date_dt.apply(
+        lambda value: "" if pd.isna(value)
+        else value.strftime("%Y-%m-%d")
+    )
 
     if "stars" not in df.columns:
         df["stars"] = pd.NA
@@ -649,6 +660,10 @@ def render_clients_table(
                     {{ props.row[col.name + '_fmt'] }}
                 </template>
 
+                <template v-else-if="col.name === 'last_shift_date'">
+                    {{ props.row.last_shift_date_fmt }}
+                </template>
+                
                 <template v-else>
                     {{ col.value }}
                 </template>

@@ -91,6 +91,16 @@ def add_client_summary_slot(table):
                     <span v-html="props.row.rating_html"></span>
                 </template>
 
+                <template v-else-if="[
+                    'new_debt',
+                    'paid_debt',
+                    'net_delta',
+                    'shifted_debt',
+                    'new_overdue_debt'
+                ].includes(col.name)">
+                    {{ props.row[col.name + '_fmt'] }}
+                </template>
+
                 <template v-else>
                     {{ col.value }}
                 </template>
@@ -115,6 +125,19 @@ def add_event_table_slots(table):
 
                 <template v-else-if="col.name === 'rating'">
                     <span v-html="props.row.rating_html"></span>
+                </template>
+
+                <template v-else-if="[
+                    'invoice_date',
+                    'due_date',
+                    'previous_due_date',
+                    'current_due_date'
+                ].includes(col.name)">
+                    {{ props.row[col.name + '_fmt'] }}
+                </template>
+
+                <template v-else-if="col.name === 'invoice_amount'">
+                    {{ props.row.invoice_amount_fmt }}
                 </template>
 
                 <template v-else>
@@ -148,7 +171,7 @@ def add_branch_summary_slots(table):
         "body-cell-rating",
         """
         <q-td :props="props" class="text-center" :style="props.row.is_dimmed ? 'opacity:0.45;' : ''">
-            {{ props.row.weighted_rating_fmt }}
+            <span v-html="props.row.rating_html"></span>
         </q-td>
         """,
     )
@@ -613,6 +636,16 @@ def deltas_page():
                 if col in frame.columns:
                     frame[f"{col}_fmt"] = frame[col].apply(date_fmt)
 
+        for frame in [term_shifts, new_overdue]:
+            for col in ["invoice_date", "due_date", "previous_due_date", "current_due_date"]:
+                if col in frame.columns:
+                    frame[f"{col}_sort"] = pd.to_datetime(
+                        frame[col],
+                        errors="coerce",
+                    ).apply(
+                        lambda value: "" if pd.isna(value) else value.strftime("%Y-%m-%d")
+                    )
+
         summary = prepare_money_cols(summary, ["new_debt", "paid_debt", "net_delta", "shifted_debt", "new_overdue_debt"])
         branch_summary = prepare_money_cols(branch_summary, ["new_debt", "paid_debt", "net_delta", "shifted_debt", "new_overdue_debt"])
         term_shifts = prepare_money_cols(term_shifts, ["invoice_amount"])
@@ -631,8 +664,12 @@ def deltas_page():
             )
 
         if not branch_summary.empty:
-            branch_summary["weighted_rating_fmt"] = branch_summary["weighted_rating"].apply(
-                lambda value: "—" if pd.isna(value) else f"{float(value):.2f}"
+            branch_summary["rating_html"] = branch_summary["weighted_rating"].apply(
+                lambda value: (
+                    rating_stars_html(int(round(float(value))))
+                    if pd.notna(value)
+                    else "—"
+                )
             )
 
         def prepare_event_client_columns(frame: pd.DataFrame) -> pd.DataFrame:
@@ -695,11 +732,11 @@ def deltas_page():
                 columns=[
                     {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "left", "sortable": True},
                     {"name": "rating", "label": "Рейтинг", "field": "weighted_rating", "align": "center", "sortable": True},
-                    {"name": "new_debt", "label": "Новый долг", "field": "new_debt_fmt", "align": "right", "sortable": True},
-                    {"name": "paid_debt", "label": "Погашено", "field": "paid_debt_fmt", "align": "right", "sortable": True},
-                    {"name": "net_delta", "label": "Чистая дельта", "field": "net_delta_fmt", "align": "right", "sortable": True},
-                    {"name": "shifted_debt", "label": "Переносы", "field": "shifted_debt_fmt", "align": "right", "sortable": True},
-                    {"name": "new_overdue_debt", "label": "Новая просрочка", "field": "new_overdue_debt_fmt", "align": "right", "sortable": True},
+                    {"name": "new_debt", "label": "Новый долг", "field": "new_debt", "align": "right", "sortable": True},
+                    {"name": "paid_debt", "label": "Погашено", "field": "paid_debt", "align": "right", "sortable": True},
+                    {"name": "net_delta", "label": "Чистая дельта", "field": "net_delta", "align": "right", "sortable": True},
+                    {"name": "shifted_debt", "label": "Переносы", "field": "shifted_debt", "align": "right", "sortable": True},
+                    {"name": "new_overdue_debt", "label": "Новая просрочка", "field": "new_overdue_debt", "align": "right", "sortable": True},
                 ],
                 rows=prepare_branch_rows(),
                 pagination={"rowsPerPage": 20},
@@ -719,14 +756,14 @@ def deltas_page():
 
             summary_table = ui.table(
                 columns=[
+                    {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "center", "sortable": True},
                     {"name": "client", "label": "Наименование", "field": "client_display", "align": "left", "sortable": True},
                     {"name": "rating", "label": "Рейтинг", "field": "credit_quality_stars", "align": "center", "sortable": True},
-                    {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "center", "sortable": True},
-                    {"name": "new_debt", "label": "Новый долг", "field": "new_debt_fmt", "align": "right", "sortable": True},
-                    {"name": "paid_debt", "label": "Погашено", "field": "paid_debt_fmt", "align": "right", "sortable": True},
-                    {"name": "net_delta", "label": "Чистая дельта", "field": "net_delta_fmt", "align": "right", "sortable": True},
-                    {"name": "shifted_debt", "label": "Переносы", "field": "shifted_debt_fmt", "align": "right", "sortable": True},
-                    {"name": "new_overdue_debt", "label": "Новая просрочка", "field": "new_overdue_debt_fmt", "align": "right", "sortable": True},
+                    {"name": "new_debt", "label": "Новый долг", "field": "new_debt", "align": "right", "sortable": True},
+                    {"name": "paid_debt", "label": "Погашено", "field": "paid_debt", "align": "right", "sortable": True},
+                    {"name": "net_delta", "label": "Чистая дельта", "field": "net_delta", "align": "right", "sortable": True},
+                    {"name": "shifted_debt", "label": "Переносы", "field": "shifted_debt", "align": "right", "sortable": True},
+                    {"name": "new_overdue_debt", "label": "Новая просрочка", "field": "new_overdue_debt", "align": "right", "sortable": True},
                 ],
                 rows=[],
                 pagination={"rowsPerPage": 20},
@@ -739,16 +776,16 @@ def deltas_page():
                 "Накладные, по которым изменился срок оплаты между двумя отчетными днями.",
                 term_shifts,
                 [
+                    {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "center", "sortable": True},
                     {"name": "client", "label": "Наименование", "field": "client_display", "align": "left", "sortable": True},
                     {"name": "rating", "label": "Рейтинг", "field": "credit_quality_stars", "align": "center", "sortable": True},
-                    {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "center", "sortable": True},
-                    {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_fmt", "sortable": True},
+                    {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_sort", "sortable": True},
                     {"name": "print_invoice_number", "label": "Печ. номер", "field": "print_invoice_number", "sortable": True},
                     {"name": "order_number", "label": "Заказ", "field": "order_number", "sortable": True},
-                    {"name": "previous_due_date", "label": "Было", "field": "previous_due_date_fmt", "sortable": True},
-                    {"name": "current_due_date", "label": "Стало", "field": "current_due_date_fmt", "sortable": True},
+                    {"name": "previous_due_date", "label": "Было", "field": "previous_due_date_sort", "sortable": True},
+                    {"name": "current_due_date", "label": "Стало", "field": "current_due_date_sort", "sortable": True},
                     {"name": "due_date_delta_days", "label": "Δ дней", "field": "due_date_delta_days", "align": "right", "sortable": True},
-                    {"name": "invoice_amount", "label": "Сумма", "field": "invoice_amount_fmt", "align": "right", "sortable": True},
+                    {"name": "invoice_amount", "label": "Сумма", "field": "invoice_amount", "align": "right", "sortable": True},
                 ],
                 "Изменений сроков оплаты за выбранный период нет.",
             )
@@ -758,14 +795,14 @@ def deltas_page():
                 "Накладные, которые не были просрочены в базовом отчете, но стали просроченными в последнем.",
                 new_overdue,
                 [
+                    {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "center", "sortable": True},
                     {"name": "client", "label": "Наименование", "field": "client_display", "align": "left", "sortable": True},
                     {"name": "rating", "label": "Рейтинг", "field": "credit_quality_stars", "align": "center", "sortable": True},
-                    {"name": "client_group", "label": "Филиал", "field": "client_group", "align": "center", "sortable": True},
-                    {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_fmt", "sortable": True},
-                    {"name": "due_date", "label": "Оплатить до", "field": "due_date_fmt", "sortable": True},
+                    {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_sort", "sortable": True},
+                    {"name": "due_date", "label": "Оплатить до", "field": "due_date_sort", "sortable": True},
                     {"name": "print_invoice_number", "label": "Печ. номер", "field": "print_invoice_number", "sortable": True},
                     {"name": "order_number", "label": "Заказ", "field": "order_number", "sortable": True},
-                    {"name": "invoice_amount", "label": "Сумма", "field": "invoice_amount_fmt", "align": "right", "sortable": True},
+                    {"name": "invoice_amount", "label": "Сумма", "field": "invoice_amount", "align": "right", "sortable": True},
                     {"name": "days_overdue_real", "label": "Дней", "field": "days_overdue_real", "align": "right", "sortable": True},
                 ],
                 "Новой просрочки за выбранный период нет.",

@@ -13,6 +13,10 @@ def _date_fmt(value) -> str:
         return ""
     return pd.to_datetime(value).strftime("%d.%m.%Y")
 
+def _date_sort(value) -> str:
+    if pd.isna(value):
+        return ""
+    return pd.to_datetime(value).strftime("%Y-%m-%d")
 
 def _int_fmt(value) -> str:
     if pd.isna(value):
@@ -219,6 +223,14 @@ def _prepare_rows(
     df["due_date_fmt"] = df["due_date"].apply(_date_fmt)
     df["invoice_amount_fmt"] = df["invoice_amount"].apply(_money_precise)
 
+    df["invoice_date_fmt"] = df["invoice_date"].apply(_date_fmt)
+    df["due_date_fmt"] = df["due_date"].apply(_date_fmt)
+
+    df["invoice_date_sort"] = df["invoice_date"].apply(_date_sort)
+    df["due_date_sort"] = df["due_date"].apply(_date_sort)
+
+    df["invoice_amount_fmt"] = df["invoice_amount"].apply(_money_precise)
+
     df["payment_term_days_fmt"] = df["payment_term_days"].apply(_int_fmt)
     df["invoice_age_days_fmt"] = df["invoice_age_days"].apply(_int_fmt)
     df["days_overdue_real_fmt"] = df["days_overdue_real"].apply(_int_fmt)
@@ -314,17 +326,17 @@ def render_work_invoices_table(
         })
 
     columns.extend([
-        {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_fmt", "sortable": True},
+        {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_sort", "sortable": True},
         {"name": "order_number", "label": "Номер заказа", "field": "order_number", "sortable": True},
         {"name": "print_invoice_number", "label": "Номер накладной", "field": "print_invoice_number", "sortable": True},
         {"name": "analytics_type", "label": "Аналитика", "field": "analytics_type", "sortable": True},
-        {"name": "due_date", "label": "Оплатить до", "field": "due_date_fmt", "sortable": True},
-        {"name": "payment_term_days", "label": "Отсрочка", "field": "payment_term_days_fmt", "align": "center", "sortable": True},
-        {"name": "invoice_age_days", "label": "Возраст", "field": "invoice_age_days_fmt", "align": "right", "sortable": True},
+        {"name": "due_date", "label": "Оплатить до", "field": "due_date_sort", "sortable": True},
+        {"name": "payment_term_days", "label": "Отсрочка", "field": "payment_term_days", "align": "center", "sortable": True},
+        {"name": "invoice_age_days", "label": "Возраст", "field": "invoice_age_days", "align": "right", "sortable": True},
         {"name": "attention_label", "label": "Ожидание оплаты", "field": "attention_label", "align": "center", "sortable": True},
         {"name": "term_shift_fmt", "label": "Переносы", "field": "term_shift_fmt", "align": "center"},
-        {"name": "invoice_amount", "label": "Сумма", "field": "invoice_amount_fmt", "align": "right", "sortable": True},
-        {"name": "days_overdue_real", "label": "Просрочка (дни)", "field": "days_overdue_real_fmt", "align": "right", "sortable": True},
+        {"name": "invoice_amount", "label": "Сумма", "field": "invoice_amount", "align": "right", "sortable": True},
+        {"name": "days_overdue_real", "label": "Просрочка (дни)", "field": "days_overdue_real", "align": "right", "sortable": True},
     ])
 
     def filtered_rows():
@@ -401,7 +413,7 @@ def render_work_invoices_table(
                                     ? 'orange'
                                     : 'grey'
                         "
-                        :label="col.value"
+                        :label="props.row.payment_term_days_fmt"
                     />
                 </template>
 
@@ -431,6 +443,26 @@ def render_work_invoices_table(
                         :label="col.value"
                     />
                     <span v-else class="text-grey-6">—</span>
+                </template>
+
+                <template v-else-if="col.name === 'invoice_date'">
+                    {{ props.row.invoice_date_fmt }}
+                </template>
+
+                <template v-else-if="col.name === 'due_date'">
+                    {{ props.row.due_date_fmt }}
+                </template>
+
+                <template v-else-if="col.name === 'invoice_age_days'">
+                    {{ props.row.invoice_age_days_fmt }}
+                </template>
+
+                <template v-else-if="col.name === 'invoice_amount'">
+                    {{ props.row.invoice_amount_fmt }}
+                </template>
+
+                <template v-else-if="col.name === 'days_overdue_real'">
+                    {{ props.row.days_overdue_real_fmt }}
                 </template>
 
                 <template v-else>
