@@ -12,6 +12,10 @@ def top_navigation():
 
         ui.button("🟠 К ОПЛАТЕ СЕГОДНЯ", on_click=lambda: ui.navigate.to("/due-today")).props("flat color=warning")
 
-        ui.button("🟡 БЛИЖАЙШИЕ 3 ДНЯ", on_click=lambda: ui.navigate.to("/due-soon")).props("flat color=warning")
+        ui.button("🟡 БЛИЖАЙШИЕ ТРИ ДНЯ", on_click=lambda: ui.navigate.to("/due-soon")).props("flat color=warning")
+
+        ui.button("🟨 ОЖИДАНИЕ ОПЛАТЫ", on_click=lambda: ui.navigate.to("/payment-attention")).props("flat color=warning")
+
+        ui.button("🟧 ПЕРЕНОСЫ", on_click=lambda: ui.navigate.to("/term-shifts")).props("flat color=warning")
 
         ui.button("🏛️ СВОДКА", on_click=lambda: ui.navigate.to("/executive")).props("flat color=primary")

@@ -90,10 +90,9 @@ def render_credit_quality_strip(row: pd.Series):
                     ui.label("Дополнительных severity-сигналов нет.").classes("text-sm")
 
             with ui.column().classes("items-end gap-1 text-sm"):
-                ui.label(f"Долг: {_money(total_debt)}").classes("font-bold")
                 ui.label(f"Средняя отсрочка: {weighted_avg_payment_term_days:.1f} дн.")
                 ui.label(f"Макс. отсрочка: {max_payment_term_days} дн.")
-                ui.label(f"90+ green debt: {green_90_plus_share_pct:.1f}%")
-                ui.label(f"120+ green debt: {_money(green_120_plus_debt)}")
+                ui.label(f"90+ дней непросроченный долг: {green_90_plus_share_pct:.1f}%")
+                ui.label(f"120+ дней непросроченный долг: {_money(green_120_plus_debt)}")
                 ui.label(f"Переносы: {term_shift_count}")
                 ui.label(f"Повторные переносы: {repeated_shift_invoice_count}")

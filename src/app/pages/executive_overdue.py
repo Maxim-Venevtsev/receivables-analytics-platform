@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from urllib.parse import quote
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -8,7 +9,7 @@ from sqlalchemy import create_engine, text
 
 from src.app.components.navigation import top_navigation
 from src.app.components.kpi_cards import money, percent
-from src.app.components.rating_stars import rating_aggrid_cell_renderer
+from src.app.components.clients_table import render_clients_table
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -22,12 +23,6 @@ engine = create_engine(
 def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(sql), conn, params=params)
-
-
-def rating_fmt(stars):
-    if pd.isna(stars):
-        return "—"
-    return f"{int(stars)}★"
 
 
 def compact_kpi(title: str, value: str, subtitle: str = ""):
@@ -54,8 +49,12 @@ def executive_overdue_page():
 
     overdue_clients = query_df("""
         SELECT *
-        FROM core.v_executive_overdue_clients
-        ORDER BY overdue_debt DESC, max_days_overdue DESC
+        FROM core.v_client_operational_summary
+        WHERE overdue_debt > 0
+        ORDER BY
+            overdue_debt DESC,
+            max_days_overdue DESC,
+            total_debt DESC
     """)
 
     if overdue_clients.empty:
@@ -78,116 +77,36 @@ def executive_overdue_page():
         compact_kpi("% просрочки", percent(overdue_share))
         compact_kpi("Макс. дней", f"{max_days} дней")
 
-    df = overdue_clients.copy()
-    df["rating_display"] = df["stars"].apply(rating_fmt)
-
-    with ui.card().classes("w-full p-4 mb-3"):
-        ui.label("Клиенты с просроченной задолженностью").classes(
-            "text-xl font-bold mb-1"
-        )
-        ui.label(
-            "Клиенты, формирующие текущую просроченную задолженность портфеля."
-        ).classes("text-sm text-gray-500")
-
-    grid = ui.aggrid({
-        "columnDefs": [
-            {
-                "headerName": "Клиент",
-                "field": "client_name",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 320,
-                ":cellRenderer": """
-                    params => `
-                        <span style="color:#1976d2; cursor:pointer; font-weight:500;">
-                            ${params.data.client_id} · ${params.value}
-                        </span>
-                    `
-                """,
-            },
-            {"headerName": "Филиал", "field": "client_group", "sortable": True, "filter": True, "minWidth": 140},
-            {
-                "headerName": "Рейтинг",
-                "field": "stars",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "minWidth": 120,
-                "maxWidth": 140,
-                ":cellRenderer": rating_aggrid_cell_renderer(),
-            },
-            {
-                "headerName": "Весь долг",
-                "field": "total_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 150,
-                ":valueFormatter": "params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')",
-            },
-            {
-                "headerName": "Просрочено",
-                "field": "overdue_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 150,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        return `<span style="color:#dc2626; font-weight:700;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "% просрочки",
-                "field": "overdue_share_pct",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 150,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 50 ? '#dc2626' : value > 20 ? '#f97316' : '#ca8a04';
-                        return `<span style="color:${color}; font-weight:700;">${value.toFixed(1)}%</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "Макс. дней",
-                "field": "max_days_overdue",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 30 ? '#991b1b' : value > 7 ? '#dc2626' : '#f97316';
-                        return `<span style="color:${color}; font-weight:700;">${value}</span>`;
-                    }
-                """,
-            },
-            {"headerName": "Риск", "field": "risk_category", "sortable": True, "filter": True, "minWidth": 120},
-            {"headerName": "Действие", "field": "recommended_action", "sortable": True, "filter": True, "minWidth": 160},
+    client_table = render_clients_table(
+        clients=overdue_clients,
+        title="Контрагенты",
+        subtitle=None,
+        show_branch=True,
+        show_search=True,
+        from_route="executive-overdue",
+        visible_columns=[
+            "client_group",
+            "client",
+            "rating",
+            "total_debt",
+            "overdue_debt",
+            "overdue_share_pct",
+            "debt_45_plus",
+            "debt_60_plus",
+            "debt_90_plus",
+            "debt_120_plus",
+            "max_days_overdue",
         ],
-        "rowData": df.to_dict("records"),
-        "defaultColDef": {"resizable": True, "sortable": True, "filter": True},
-        "pagination": True,
-        "paginationPageSize": 25,
-        "domLayout": "autoHeight",
-    }).classes("w-full")
+    )
 
-    def open_client_card_from_grid(event):
-        args = event.args or {}
-        data = args.get("data") or {}
-        col_id = (
-            args.get("colId")
-            or (args.get("column") or {}).get("colId")
-            or (args.get("colDef") or {}).get("field")
+    def open_client(event):
+        ui.navigate.to(f"/client/{event.args}?from=executive-overdue")
+
+    def open_branch(event):
+        ui.navigate.to(
+            f"/branch/{quote(str(event.args))}?from=/executive/overdue"
         )
 
-        if col_id == "client_name" and data.get("client_id"):
-            ui.navigate.to(f"/client/{data['client_id']}?from=executive-overdue")
-
-    grid.on("cellClicked", open_client_card_from_grid)
+    if client_table is not None:
+        client_table.on("client_click", open_client)
+        client_table.on("branch_click", open_branch)

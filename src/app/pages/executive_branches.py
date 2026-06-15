@@ -57,10 +57,10 @@ def executive_branches_page():
     long_green_by_branch = query_df("""
         SELECT
             client_group,
-            SUM(green_45_plus_debt) AS green_45_plus_debt,
-            SUM(green_60_plus_debt) AS green_60_plus_debt,
+            SUM(green_45_plus_debt) AS green_45_plus_debt_calc,
+            SUM(green_60_plus_debt) AS green_60_plus_debt_calc,
             SUM(green_90_plus_debt) AS green_90_plus_debt_calc,
-            SUM(green_120_plus_debt) AS green_120_plus_debt
+            SUM(green_120_plus_debt) AS green_120_plus_debt_calc
         FROM core.v_executive_long_green_clients
         GROUP BY client_group
     """)
@@ -82,16 +82,18 @@ def executive_branches_page():
         .astype(int)
     )
 
-    for col in [
-        "green_45_plus_debt",
-        "green_60_plus_debt",
-        "green_90_plus_debt_calc",
-        "green_120_plus_debt",
+    for src_col, target_col in [
+        ("green_45_plus_debt_calc", "green_45_plus_debt"),
+        ("green_60_plus_debt_calc", "green_60_plus_debt"),
+        ("green_90_plus_debt_calc", "green_90_plus_debt"),
+        ("green_120_plus_debt_calc", "green_120_plus_debt"),
     ]:
-        df[col] = df[col].fillna(0)
-
-    if "green_90_plus_debt" not in df.columns:
-        df["green_90_plus_debt"] = df["green_90_plus_debt_calc"]
+        if src_col in df.columns:
+            df[target_col] = df[src_col].fillna(0)
+        elif target_col not in df.columns:
+            df[target_col] = 0
+        else:
+            df[target_col] = df[target_col].fillna(0)
 
     total_debt = float(df["total_debt"].sum())
     overdue_debt = float(df["overdue_debt"].sum())

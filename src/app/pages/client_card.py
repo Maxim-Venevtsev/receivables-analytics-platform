@@ -7,6 +7,7 @@ from nicegui import ui
 from sqlalchemy import create_engine, text
 from fastapi import Request
 
+from src.app.components.navigation import top_navigation
 from src.app.components.rating_stars import rating_stars_html
 from src.app.components.charts import (
     build_client_debt_history_chart,
@@ -15,13 +16,7 @@ from src.app.components.charts import (
 from src.app.components.kpi_cards import (
     money,
     percent,
-    kpi_card,
     compact_kpi_card,
-)
-from src.app.components.behavioral_indicators import (
-    get_debt_trend_indicator,
-    get_overdue_behavior_indicator,
-    get_volatility_indicator,
 )
 from src.app.components.rating_migration_strip import (
     render_rating_migration_strip,
@@ -33,6 +28,9 @@ from src.app.components.payment_behavior_strip import (
     render_payment_behavior_strip,
     get_payment_behavior_metrics,
 )
+from src.app.components.receivables_kpi_strip import render_receivables_kpi_strip
+from src.app.components.work_invoices_table import render_work_invoices_table
+from src.app.components.paid_invoices_table import render_paid_invoices_table
 from urllib.parse import quote
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -70,93 +68,6 @@ def aging_bucket(row) -> str:
     return "Не просрочено"
 
 
-def date_fmt(value) -> str:
-    if pd.isna(value):
-        return ""
-    return pd.to_datetime(value).strftime("%d.%m.%Y")
-
-
-def money_precise(value) -> str:
-    if pd.isna(value):
-        return "0,00"
-    return f"{float(value):,.2f}".replace(",", " ").replace(".", ",")
-
-
-def _invoice_age_days(invoice_date, as_of_date) -> int | None:
-    if pd.isna(invoice_date) or pd.isna(as_of_date):
-        return None
-
-    return int(
-        (
-            pd.to_datetime(as_of_date).normalize()
-            - pd.to_datetime(invoice_date).normalize()
-        ).days
-    )
-
-
-def payment_expectation_signal(row, behavior_metrics: dict, as_of_date) -> dict:
-    if row.get("is_overdue_real"):
-        return {
-            "label": "Просрочено",
-            "level": "overdue",
-            "age_days": _invoice_age_days(row.get("invoice_date"), as_of_date),
-        }
-
-    if not behavior_metrics.get("has_data"):
-        return {
-            "label": "Нет профиля",
-            "level": "no_data",
-            "age_days": _invoice_age_days(row.get("invoice_date"), as_of_date),
-        }
-
-    usual_from = behavior_metrics.get("usual_from")
-    usual_to = behavior_metrics.get("usual_to")
-    invoice_count = int(behavior_metrics.get("invoice_count", 0))
-
-    if pd.isna(usual_from) or pd.isna(usual_to):
-        return {
-            "label": "Нет профиля",
-            "level": "no_data",
-            "age_days": _invoice_age_days(row.get("invoice_date"), as_of_date),
-        }
-
-    age_days = _invoice_age_days(row.get("invoice_date"), as_of_date)
-
-    if age_days is None:
-        return {
-            "label": "Нет даты",
-            "level": "no_data",
-            "age_days": None,
-        }
-
-    if age_days < float(usual_from):
-        return {
-            "label": "",
-            "level": "normal",
-            "age_days": age_days,
-        }
-
-    if age_days <= float(usual_to):
-        return {
-            "label": "Обычный срок",
-            "level": "usual_window",
-            "age_days": age_days,
-        }
-
-    if invoice_count < 5:
-        return {
-            "label": "Пора напомнить?",
-            "level": "reminder_low_confidence",
-            "age_days": age_days,
-        }
-
-    return {
-        "label": "Пора напомнить",
-        "level": "reminder",
-        "age_days": age_days,
-    }
-
-
 @ui.page("/client/{client_id}")
 def client_card_page(client_id: str, request: Request):
 
@@ -178,6 +89,8 @@ def client_card_page(client_id: str, request: Request):
         "executive-branches": "/executive/branches",
         "executive-term-shifts": "/executive/term-shifts",
         "executive-rating-migration": "/executive/rating-migration",
+        "payment-attention": "/payment-attention",
+        "term-shifts": "/term-shifts",
     }
 
     if origin == "parent-org" and parent_org_back_id:
@@ -207,6 +120,13 @@ def client_card_page(client_id: str, request: Request):
 
             COALESCE(ts.term_shift_count, 0) AS term_shift_count,
             COALESCE(ts.current_term_delta_days, 0) AS term_shift_delta_days,
+
+            CASE
+                WHEN COALESCE(ts.term_shift_count, 0) > 0
+                THEN i.invoice_amount
+                ELSE 0
+            END AS shifted_amount,
+
             ts.original_payment_term_days AS original_payment_term_days,
             ts.current_payment_term_days AS shifted_current_payment_term_days,
 
@@ -234,6 +154,16 @@ def client_card_page(client_id: str, request: Request):
         ui.label(f"Карточка клиента: {client_id}").classes("text-3xl font-bold mb-4")
         ui.label("Нет данных по клиенту")
         return
+    
+    if "shifted_amount" not in df.columns:
+        df["shifted_amount"] = df.apply(
+            lambda row: (
+                row["invoice_amount"]
+                if int(row.get("term_shift_count", 0) or 0) > 0
+                else 0
+            ),
+            axis=1,
+        )
 
     # === Paid / closed invoice events ===
 
@@ -267,7 +197,7 @@ def client_card_page(client_id: str, request: Request):
             COALESCE(ts.term_shift_count, 0) AS term_shift_count,
             COALESCE(ts.current_term_delta_days, 0) AS term_shift_delta_days
 
-        FROM core.v_recent_paid_invoices p
+        FROM core.v_recent_paid_invoices_behavior p
 
         LEFT JOIN core.v_term_shift_invoice_summary ts
             ON p.client_id = ts.client_id
@@ -284,38 +214,6 @@ def client_card_page(client_id: str, request: Request):
         LIMIT 20
     """, {"client_id": client_id})
 
-    # === Payment term baseline by analytics ===
-
-    payment_terms = df[
-        df["payment_term_days"].notna()
-    ][["analytics_type", "payment_term_days"]].copy()
-
-    payment_terms["analytics_type"] = payment_terms["analytics_type"].fillna("—")
-    payment_terms["payment_term_days"] = payment_terms["payment_term_days"].astype(int)
-
-    if not payment_terms.empty:
-        baseline_payment_term = int(payment_terms["payment_term_days"].mode().iloc[0])
-
-        baseline_by_analytics = (
-            payment_terms
-            .groupby("analytics_type")["payment_term_days"]
-            .agg(lambda s: int(s.mode().iloc[0]))
-            .to_dict()
-        )
-    else:
-        baseline_payment_term = None
-        baseline_by_analytics = {}
-
-    def get_baseline_payment_term(row) -> int | None:
-        analytics_type = row.get("analytics_type")
-
-        if pd.isna(analytics_type):
-            analytics_type = "—"
-
-        return baseline_by_analytics.get(
-            str(analytics_type),
-            baseline_payment_term,
-        )
 
     # === Historical data ===
 
@@ -376,7 +274,53 @@ def client_card_page(client_id: str, request: Request):
     client_group = df["client_group"].iloc[0]
     parent_org_id = df["parent_org_id"].iloc[0]
 
-    ui.label(f"Карточка клиента: {client_name}").classes("text-3xl font-bold mb-1")
+    total_debt = df["invoice_amount"].sum()
+
+    overdue_debt = df[df["is_overdue_real"]]["invoice_amount"].sum()
+
+    overdue_pct = (
+        overdue_debt / total_debt * 100
+        if total_debt else 0
+    )
+
+    due_today = df[df["is_due_today"]]["invoice_amount"].sum()
+
+    due_today_pct = (
+        due_today / total_debt * 100
+        if total_debt else 0
+    )
+
+    due_soon_only = df[
+        (df["is_due_in_3_days"])
+        & (~df["is_due_today"])
+    ]["invoice_amount"].sum()
+
+    due_soon_pct = (
+        due_soon_only / total_debt * 100
+        if total_debt else 0
+    )
+
+    shifted_amount = df["shifted_amount"].sum()
+
+    shifted_pct = (
+        shifted_amount / total_debt * 100
+        if total_debt else 0
+    )
+
+    max_days = int(df["days_overdue_real"].max())
+
+    # === Rating ===
+
+    if not credit_quality.empty:
+        cq = credit_quality.iloc[0]
+        cq_stars = int(cq["credit_quality_stars"])
+        rating_text = rating_stars_html(cq_stars)
+    else:
+        rating_text = "—"
+
+    with ui.row().classes("w-full items-center gap-4 mb-1"):
+        ui.label(f"Карточка клиента: {client_name}").classes("text-3xl font-bold")
+        ui.html(rating_text).classes("text-xl")
 
     with ui.row().classes("items-center gap-1 text-sm text-gray-500 mb-4"):
         ui.label(f"Клиент ID: {client_id} · Вышестоящая организация:")
@@ -388,7 +332,17 @@ def client_card_page(client_id: str, request: Request):
             )
         ).props("flat dense color=primary").classes("p-0 min-h-0")
 
-        ui.label(f"· Филиал: {client_group}")
+        ui.label("· Филиал:")
+
+        ui.button(
+            str(client_group),
+            on_click=lambda: ui.navigate.to(
+                f"/branch/{quote(str(client_group))}"
+                f"?from=/client/{client_id}"
+            )
+        ).props("flat dense color=primary").classes("p-0 min-h-0")
+
+    top_navigation()
 
     with ui.row().classes("mb-4"):
         ui.button(
@@ -396,60 +350,17 @@ def client_card_page(client_id: str, request: Request):
             on_click=lambda: ui.navigate.to(back_target)
         ).props("flat color=primary")
 
-    total_debt = df["invoice_amount"].sum()
-
-    overdue_debt = df[df["is_overdue_real"]]["invoice_amount"].sum()
-
-    overdue_pct = (
-        overdue_debt / total_debt * 100
-        if total_debt else 0
+    render_receivables_kpi_strip(
+        total_debt=money(total_debt),
+        overdue_debt=money(overdue_debt),
+        overdue_share=percent(overdue_pct),
+        due_today=money(due_today),
+        due_today_share=percent(due_today_pct),
+        due_soon=money(due_soon_only),
+        due_soon_share=percent(due_soon_pct),
+        shifted_amount=money(shifted_amount),
+        shifted_share=percent(shifted_pct),
     )
-
-    max_days = int(df["days_overdue_real"].max())
-
-    # === Rating ===
-
-    stars_raw = df["stars"].iloc[0]
-
-    if pd.notna(stars_raw):
-        stars = int(stars_raw)
-        rating_text = rating_stars_html(stars)
-    else:
-        rating_text = "—"
-
-    rating_label = (
-        df["rating_display_label"].iloc[0]
-        if pd.notna(df["rating_display_label"].iloc[0])
-        else "Нет рейтинга"
-    )
-
-    confidence_level = (
-        df["confidence_level"].iloc[0]
-        if pd.notna(df["confidence_level"].iloc[0])
-        else ""
-    )
-
-    rating_subtitle = f"{rating_label} · {confidence_level}"
-
-    if not credit_quality.empty:
-
-        cq = credit_quality.iloc[0]
-
-        cq_stars = int(cq["credit_quality_stars"])
-
-        rating_text = rating_stars_html(cq_stars)
-
-        rating_subtitle = (
-            f"Base {int(cq['base_stars'])}★"
-            f" → CQ {cq_stars}★"
-        )
-
-    with ui.row().classes("gap-4 mb-6"):
-        kpi_card("Общий долг", money(total_debt))
-        kpi_card("Просрочено", money(overdue_debt))
-        kpi_card("% просрочки", percent(overdue_pct))
-        kpi_card("Макс. дней", str(max_days))
-        kpi_card("Рейтинг", rating_text, rating_subtitle)
 
     if not credit_quality.empty:
         render_credit_quality_strip(
@@ -622,13 +533,6 @@ def client_card_page(client_id: str, request: Request):
 
             history_kpi = get_history_kpi(history_filtered)
 
-            debt_trend = get_debt_trend_indicator(history_filtered)
-
-            overdue_behavior = get_overdue_behavior_indicator(
-                history_filtered
-            )
-            volatility = get_volatility_indicator(history_filtered)
-
             charts_container.clear()
 
             with charts_container:
@@ -640,61 +544,6 @@ def client_card_page(client_id: str, request: Request):
                         rating_migration_selected.iloc[0]
                     )
 
-                with ui.row().classes("items-center gap-2 mb-3"):
-                    ui.label("Интерпретация периода").classes(
-                        "text-sm text-gray-500"
-                    )
-
-                    with ui.icon("info_outline").classes("text-gray-500 cursor-help"):
-                        ui.tooltip(
-                            "Проценты показывают изменение показателя за выбранный период. "
-                            "Например, '+9.0%' у долга означает изменение общей задолженности "
-                            "между началом и концом выбранного окна. "
-                            "Регулярная просрочка рассчитывается как доля дней периода, "
-                            "в которые у клиента была просроченная задолженность. "
-                            "Стабильность поведения отражает волатильность структуры долга."
-                        )
-
-                with ui.row().classes("gap-3 mb-4"):
-                    with ui.card().classes("px-4 py-2"):
-                        with ui.row().classes("items-center gap-2"):
-                            ui.label(debt_trend["icon"]).classes("text-lg")
-                            ui.label(debt_trend["label"]).classes(
-                                f"text-sm font-medium text-{debt_trend['color']}-600"
-                            )
-                            ui.label(debt_trend.get("detail", "")).classes(
-                                "text-xs text-gray-500"
-                            )
-                    with ui.card().classes("px-4 py-2"):
-                        with ui.row().classes("items-center gap-2"):
-                            ui.label(overdue_behavior["icon"]).classes("text-lg")
-
-                            ui.label(
-                                overdue_behavior["label"]
-                            ).classes(
-                                f"text-sm font-medium text-{overdue_behavior['color']}-600"
-                            )
-
-                            ui.label(
-                                overdue_behavior.get("detail", "")
-                            ).classes(
-                                "text-xs text-gray-500"
-                            )
-                    with ui.card().classes("px-4 py-2"):
-                        with ui.row().classes("items-center gap-2"):
-                            ui.label(volatility["icon"]).classes("text-lg")
-
-                            ui.label(
-                                volatility["label"]
-                            ).classes(
-                                f"text-sm font-medium text-{volatility['color']}-600"
-                            )
-
-                            ui.label(
-                                volatility.get("detail", "")
-                            ).classes(
-                                "text-xs text-gray-500"
-                            )
 
                 ui.label("Ключевые показатели за период").classes(
                     "text-sm text-gray-500 mb-3"
@@ -712,10 +561,6 @@ def client_card_page(client_id: str, request: Request):
                     compact_kpi_card(
                         "Средняя просрочка",
                         percent(history_kpi["avg_overdue_share"]),
-                    )
-                    compact_kpi_card(
-                        "Макс. дней",
-                        str(history_kpi["max_days_overdue"]),
                     )
 
                 with ui.card().classes("w-full p-4 mb-6"):
@@ -754,373 +599,21 @@ def client_card_page(client_id: str, request: Request):
 
     # === Active invoices table ===
 
-    filter_toggle = ui.toggle(
-        options=["Все", "Только просроченные"],
-        value="Все"
-    ).classes("mb-4")
-
-    def prepare_rows():
-
-        dff = df.copy()
-
-        if filter_toggle.value == "Только просроченные":
-            dff = dff[dff["is_overdue_real"] == True]
-
-        dff["invoice_date_fmt"] = dff["invoice_date"].apply(date_fmt)
-        dff["due_date_fmt"] = dff["due_date"].apply(date_fmt)
-        dff["invoice_amount_fmt"] = dff["invoice_amount"].apply(money_precise)
-
-        dff["payment_term_days_fmt"] = dff["payment_term_days"].apply(
-            lambda value: "" if pd.isna(value) else str(int(value))
-        )
-
-        payment_signals = dff.apply(
-            lambda row: payment_expectation_signal(
-                row,
-                payment_behavior_metrics,
-                active_invoice_as_of_date,
-            ),
-            axis=1,
-        )
-
-        dff["payment_signal_label"] = payment_signals.apply(lambda value: value["label"])
-        dff["payment_signal_level"] = payment_signals.apply(lambda value: value["level"])
-        dff["invoice_age_days"] = payment_signals.apply(lambda value: value["age_days"])
-        dff["invoice_age_days_fmt"] = dff["invoice_age_days"].apply(
-            lambda value: "" if pd.isna(value) else str(int(value))
-        )
-
-        dff["payment_term_baseline_days"] = dff.apply(
-            get_baseline_payment_term,
-            axis=1,
-        )
-
-        dff["is_long_payment_term"] = dff["payment_term_days"].apply(
-            lambda value: False if pd.isna(value) else int(value) >= 45
-        )
-
-        dff["is_above_baseline_payment_term"] = dff.apply(
-            lambda row: (
-                False
-                if pd.isna(row["payment_term_days"])
-                or row["payment_term_baseline_days"] is None
-                else int(row["payment_term_days"]) >= int(row["payment_term_baseline_days"]) + 2
-            ),
-            axis=1,
-        )
-
-        dff["payment_term_alert_level"] = dff.apply(
-            lambda row: (
-                "critical"
-                if row["is_long_payment_term"]
-                else "warning"
-                if row["is_above_baseline_payment_term"]
-                else "normal"
-            ),
-            axis=1,
-        )
-
-        dff["term_shift_count"] = dff["term_shift_count"].fillna(0).astype(int)
-        dff["term_shift_delta_days"] = dff["term_shift_delta_days"].fillna(0).astype(int)
-
-        dff["term_shift_fmt"] = dff.apply(
-            lambda row: (
-                f"{int(row['term_shift_count'])} / +{int(row['term_shift_delta_days'])}"
-                if int(row["term_shift_count"]) > 0
-                else "—"
-            ),
-            axis=1,
-        )
-
-        dff["has_term_shift"] = dff["term_shift_count"] > 0
-
-        dff["is_overdue_fmt"] = dff["is_overdue_real"].map({
-            True: "Да",
-            False: "Нет"
-        })
-
-        dff["aging_bucket"] = dff.apply(
-            aging_bucket,
-            axis=1
-        )
-
-        return dff.to_dict("records")
-
-    table = ui.table(
-        columns=[
-            {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_fmt"},
-            {"name": "order_number", "label": "Номер заказа", "field": "order_number"},
-            {"name": "print_invoice_number", "label": "Печ. номер накладной", "field": "print_invoice_number"},
-            {"name": "analytics_type", "label": "Аналитика", "field": "analytics_type"},
-            {"name": "due_date", "label": "Оплатить до", "field": "due_date_fmt"},
-            {"name": "payment_term_days", "label": "Отсрочка, дней", "field": "payment_term_days_fmt", "align": "right"},
-            {"name": "invoice_age_days", "label": "Возраст", "field": "invoice_age_days_fmt", "align": "right"},
-            {"name": "payment_signal", "label": "Ожидание оплаты", "field": "payment_signal_label", "align": "center"},
-            {"name": "term_shift_fmt", "label": "Переносы", "field": "term_shift_fmt", "align": "center"},
-            {"name": "invoice_amount_fmt", "label": "Сумма", "field": "invoice_amount_fmt", "align": "right"},
-            {"name": "days_overdue_real", "label": "Просрочка (дни)", "field": "days_overdue_real", "align": "right"},
-            {"name": "aging_bucket", "label": "Срок просрочки", "field": "aging_bucket", "align": "center"},
-            {"name": "is_overdue_fmt", "label": "Просрочено", "field": "is_overdue_fmt", "align": "center"},
-        ],
-        rows=prepare_rows(),
-    ).classes("w-full mb-6")
-
-    table.add_slot(
-        "body",
-        """
-        <q-tr :props="props"
-            :class="
-                props.row.is_overdue_real
-                    ? 'bg-red-100'
-                    : props.row.is_due_today
-                        ? 'bg-orange-100'
-                        : props.row.is_due_in_3_days
-                            ? 'bg-yellow-100'
-                            : ''
-            ">
-            <q-td v-for="col in props.cols" :key="col.name" :props="props">
-                <template v-if="col.name === 'payment_term_days'">
-                    <q-badge
-                        :color="
-                            props.row.payment_term_alert_level === 'critical'
-                                ? 'red'
-                                : props.row.payment_term_alert_level === 'warning'
-                                    ? 'orange'
-                                    : 'grey'
-                        "
-                        :label="col.value"
-                    />
-                </template>
-
-                <template v-else-if="col.name === 'payment_signal'">
-
-                    <q-badge
-                        v-if="col.value"
-                        :color="
-                            props.row.payment_signal_level === 'overdue'
-                                ? 'red'
-                                : props.row.payment_signal_level === 'reminder'
-                                    ? 'orange'
-                                    : props.row.payment_signal_level === 'reminder_low_confidence'
-                                        ? 'amber'
-                                        : props.row.payment_signal_level === 'usual_window'
-                                            ? 'blue'
-                                            : 'grey'
-                        "
-                        :label="col.value"
-                    />
-
-                    <span v-else></span>
-
-                </template>
-
-                <template v-else-if="col.name === 'term_shift_fmt'">
-                    <q-badge
-                        v-if="props.row.has_term_shift"
-                        color="red"
-                        :label="col.value"
-                    />
-                    <span v-else class="text-grey-6">—</span>
-                </template>
-
-                <template v-else>
-                    {{ col.value }}
-                </template>
-            </q-td>
-        </q-tr>
-        """
+    render_work_invoices_table(
+        invoices=df,
+        show_branch=False,
+        show_client=False,
+        title="Накладные в работе",
+        behavior_metrics=payment_behavior_metrics,
+        as_of_date=active_invoice_as_of_date,
     )
-
-    def refresh():
-        table.rows = prepare_rows()
-        table.update()
-
-    filter_toggle.on_value_change(lambda _: refresh())
 
     # === Recently paid invoices table ===
 
-    if not paid_invoices.empty:
-
-        ui.label("Последние оплаченные накладные").classes("text-xl font-bold mt-6 mb-1")
-        ui.label(
-            "Расчетная дата оплаты восстановлена по исчезновению накладной из открытой дебиторки "
-            "или по снижению открытого остатка между срезами."
-        ).classes("text-sm text-gray-500 mb-3")
-
-        def prepare_paid_rows():
-
-            dff = paid_invoices.copy()
-
-            dff["invoice_date_fmt"] = dff["invoice_date"].apply(date_fmt)
-            dff["due_date_fmt"] = dff["due_date"].apply(date_fmt)
-            dff["estimated_payment_date_fmt"] = dff["estimated_payment_date"].apply(date_fmt)
-
-            dff["paid_amount_fmt"] = dff["paid_amount_detected"].apply(money_precise)
-            dff["amount_before_payment_fmt"] = dff["amount_before_payment"].apply(money_precise)
-            dff["amount_after_payment_fmt"] = dff["amount_after_payment"].apply(money_precise)
-
-            dff["payment_term_days_fmt"] = dff["payment_term_days"].apply(
-                lambda value: "" if pd.isna(value) else str(int(value))
-            )
-
-            dff["actual_payment_term_days_fmt"] = dff["actual_payment_term_days"].apply(
-                lambda value: "" if pd.isna(value) else str(int(value))
-            )
-
-            dff["days_vs_due_date"] = dff["days_vs_due_date"].fillna(0).astype(int)
-            dff["term_shift_count"] = dff["term_shift_count"].fillna(0).astype(int)
-            dff["term_shift_delta_days"] = dff["term_shift_delta_days"].fillna(0).astype(int)
-
-            dff["term_shift_fmt"] = dff.apply(
-                lambda row: (
-                    f"{int(row['term_shift_count'])} / +{int(row['term_shift_delta_days'])}"
-                    if int(row["term_shift_count"]) > 0
-                    else "—"
-                ),
-                axis=1,
-            )
-
-            dff["has_term_shift"] = dff["term_shift_count"] > 0
-
-            dff["payment_delay_fmt"] = dff["days_vs_due_date"].apply(
-                lambda value: (
-                    "В срок"
-                    if int(value) <= 0
-                    else f"+{int(value)}"
-                )
-            )
-
-            dff["payment_delay_level"] = dff["days_vs_due_date"].apply(
-                lambda value: (
-                    "on_time"
-                    if int(value) <= 0
-                    else "small_delay"
-                    if int(value) <= 3
-                    else "delay"
-                    if int(value) <= 14
-                    else "late"
-                )
-            )
-
-            usual_from = payment_behavior_metrics.get("usual_from")
-            usual_to = payment_behavior_metrics.get("usual_to")
-
-            def paid_behavior_label(row):
-                actual_days = row.get("actual_payment_term_days")
-
-                if pd.isna(actual_days) or pd.isna(usual_from) or pd.isna(usual_to):
-                    return ""
-
-                actual_days = float(actual_days)
-
-                if actual_days < float(usual_from):
-                    return "Раньше обычного"
-
-                if actual_days <= float(usual_to):
-                    return "Обычно"
-
-                if actual_days <= float(usual_to) + 7:
-                    return "Позже обычного"
-
-                return "Сильно позже"
-
-
-            def paid_behavior_level(label):
-                return {
-                    "Раньше обычного": "early",
-                    "Обычно": "normal",
-                    "Позже обычного": "late",
-                    "Сильно позже": "very_late",
-                }.get(label, "")
-
-
-            dff["paid_behavior_label"] = dff.apply(paid_behavior_label, axis=1)
-            dff["paid_behavior_level"] = dff["paid_behavior_label"].apply(paid_behavior_level)
-            dff["payment_event_type_label"] = dff["payment_event_type"].map({
-                "FULL": "Полная",
-                "PARTIAL": "Частичная",
-            }).fillna(dff["payment_event_type"])
-
-            return dff.to_dict("records")
-
-        paid_table = ui.table(
-            columns=[
-                {"name": "invoice_date", "label": "Дата накладной", "field": "invoice_date_fmt"},
-                {"name": "print_invoice_number", "label": "Печ. номер", "field": "print_invoice_number"},
-                {"name": "order_number", "label": "Номер заказа", "field": "order_number"},
-                {"name": "analytics_type", "label": "Аналитика", "field": "analytics_type"},
-                {"name": "payment_term_days", "label": "Отсрочка", "field": "payment_term_days_fmt", "align": "right"},
-                {"name": "due_date", "label": "Оплатить до", "field": "due_date_fmt"},
-                {"name": "estimated_payment_date", "label": "Расч. дата оплаты", "field": "estimated_payment_date_fmt"},
-                {"name": "actual_payment_term_days", "label": "Факт, дней", "field": "actual_payment_term_days_fmt", "align": "right"},
-                {"name": "paid_behavior", "label": "Платежное поведение", "field": "paid_behavior_label", "align": "center"},
-                {"name": "payment_delay", "label": "Просрочка оплаты", "field": "payment_delay_fmt", "align": "center"},
-                {"name": "term_shift_fmt", "label": "Переносы", "field": "term_shift_fmt", "align": "center"},
-                {"name": "paid_amount", "label": "Оплачено", "field": "paid_amount_fmt", "align": "right"},
-                {"name": "payment_event_type", "label": "Тип", "field": "payment_event_type_label", "align": "center"},
-            ],
-            rows=prepare_paid_rows(),
-        ).classes("w-full")
-
-        paid_table.add_slot(
-            "body",
-            """
-            <q-tr :props="props">
-                <q-td v-for="col in props.cols" :key="col.name" :props="props">
-
-                    <template v-if="col.name === 'payment_delay'">
-                        <q-badge
-                            :color="
-                                props.row.payment_delay_level === 'on_time'
-                                    ? 'green'
-                                    : props.row.payment_delay_level === 'small_delay'
-                                        ? 'orange'
-                                        : props.row.payment_delay_level === 'delay'
-                                            ? 'red'
-                                            : 'dark'
-                            "
-                            :label="col.value"
-                        />
-                    </template>
-
-                    <template v-else-if="col.name === 'paid_behavior'">
-                        <q-badge
-                            v-if="col.value"
-                            :color="
-                                props.row.paid_behavior_level === 'early'
-                                    ? 'green'
-                                    : props.row.paid_behavior_level === 'normal'
-                                        ? 'blue'
-                                        : props.row.paid_behavior_level === 'late'
-                                            ? 'orange'
-                                            : 'red'
-                            "
-                            :label="col.value"
-                        />
-                        <span v-else></span>
-                    </template>
-
-                    <template v-else-if="col.name === 'term_shift_fmt'">
-                        <q-badge
-                            v-if="props.row.has_term_shift"
-                            color="red"
-                            :label="col.value"
-                        />
-                        <span v-else class="text-grey-6">—</span>
-                    </template>
-
-                    <template v-else-if="col.name === 'payment_event_type'">
-                        <q-badge
-                            :color="props.row.payment_event_type === 'FULL' ? 'green' : 'blue'"
-                            :label="col.value"
-                        />
-                    </template>
-
-                    <template v-else>
-                        {{ col.value }}
-                    </template>
-
-                </q-td>
-            </q-tr>
-            """
-        )
+    render_paid_invoices_table(
+        paid_invoices=paid_invoices,
+        payment_behavior_metrics=payment_behavior_metrics,
+        show_branch=False,
+        show_client=False,
+        title="Последние оплаченные накладные",
+    )

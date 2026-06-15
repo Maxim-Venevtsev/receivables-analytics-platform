@@ -173,7 +173,11 @@ def render_management_signals(
         render_signal_card(
             "🟠",
             "Скрытый риск: аномально длинные отсрочки",
-            f"{top['client_name']} · максимум отсрочки: {int(top['max_payment_term_days'])} дней",
+            (
+                f"{top['client_name']} · рейтинг: {int(top['stars'])}★ · "
+                f"контрактная отсрочка: {int(top['contract_payment_term_days'])} дней · "
+                f"переносы: {money(top['shifted_amount'])}"
+            ),
             "/executive/hidden-risk",
         )
 
@@ -289,8 +293,13 @@ def executive_overview_page():
 
     hidden_risk = query_df("""
         SELECT *
-        FROM core.v_executive_hidden_risk_clients
-        ORDER BY green_120_plus_debt DESC, green_90_plus_debt DESC, max_payment_term_days DESC
+        FROM core.v_client_operational_summary
+        WHERE stars <= 3
+        AND contract_payment_term_days >= 30
+        ORDER BY
+            shifted_amount DESC,
+            overdue_debt DESC,
+            total_debt DESC
     """)
 
     term_shift_kpi = query_df("""

@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from urllib.parse import quote
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -8,7 +9,7 @@ from sqlalchemy import create_engine, text
 
 from src.app.components.navigation import top_navigation
 from src.app.components.kpi_cards import money, percent
-from src.app.components.rating_stars import rating_aggrid_cell_renderer
+from src.app.components.clients_table import render_clients_table
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -49,212 +50,66 @@ def executive_hidden_risk_page():
 
     df = query_df("""
         SELECT *
-        FROM core.v_executive_hidden_risk_clients
+        FROM core.v_client_operational_summary
+        WHERE stars <= 3
+        AND contract_payment_term_days >= 30
         ORDER BY
-            green_120_plus_debt DESC,
-            green_90_plus_debt DESC,
-            max_payment_term_days DESC
+            shifted_amount DESC,
+            overdue_debt DESC,
+            total_debt DESC
     """)
 
     if df.empty:
         ui.label("Скрытых рисков не обнаружено.").classes("text-green-700 text-lg")
         return
-
-    df["stars_int"] = df["stars"].round().fillna(0).astype(int)
-
-    total_green = float(df["total_green_debt"].sum())
-    total_60 = float(df["green_60_plus_debt"].sum())
-    total_90 = float(df["green_90_plus_debt"].sum())
-    total_120 = float(df["green_120_plus_debt"].sum())
-    max_term = int(df["max_payment_term_days"].max())
+    
     client_count = int(df["client_id"].nunique())
-    low_rating_count = int((df["stars_int"] <= 3).sum())
+    branch_count = int(df["client_group"].nunique())
+    total_debt = float(df["total_debt"].sum())
+    overdue_debt = float(df["overdue_debt"].sum())
+    shifted_amount = float(df["shifted_amount"].sum())
+    max_contract_term = int(df["contract_payment_term_days"].max())
+    max_payment_term = int(df["max_payment_term_days"].max())
 
     with ui.row().classes("gap-4 mb-6"):
         compact_kpi("Клиентов риска", str(client_count))
-        compact_kpi("Низкий рейтинг", str(low_rating_count), "≤ 3★")
-        compact_kpi("60+ непросрочено", money(total_60))
-        compact_kpi("90+ непросрочено", money(total_90))
-        compact_kpi("120+ непросрочено", money(total_120))
-        compact_kpi("Макс. отсрочка", f"{max_term} дней")
+        compact_kpi("Филиалов", str(branch_count))
+        compact_kpi("Весь долг", money(total_debt))
+        compact_kpi("Просрочено", money(overdue_debt))
+        compact_kpi("Долг с переносами", money(shifted_amount))
+        compact_kpi("Макс. контрактная отсрочка", f"{max_contract_term} дней")
+        compact_kpi("Макс. отсрочка", f"{max_payment_term} дней")
 
-    with ui.card().classes("w-full p-4 mb-3"):
-        ui.label("Клиенты со скрытым риском").classes("text-xl font-bold mb-1")
-        ui.label(
-            "Основной фокус — сочетание длинной отсрочки, суммы долга и слабого рейтинга клиента."
-        ).classes("text-sm text-gray-500")
-
-    grid = ui.aggrid({
-        "columnDefs": [
-            {
-                "headerName": "Клиент",
-                "field": "client_name",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 320,
-                ":cellRenderer": """
-                    params => `
-                        <span style="color:#1976d2; cursor:pointer; font-weight:600;">
-                            ${params.data.client_id} · ${params.value}
-                        </span>
-                    `
-                """,
-            },
-            {"headerName": "Филиал", "field": "client_group", "sortable": True, "filter": True, "minWidth": 140},
-            {
-                "headerName": "Рейтинг",
-                "field": "stars_int",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "minWidth": 120,
-                "maxWidth": 140,
-                ":cellRenderer": rating_aggrid_cell_renderer(),
-            },
-            {
-                "headerName": "Весь зеленый долг",
-                "field": "total_green_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 170,
-                ":valueFormatter": "params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')",
-            },
-            {
-                "headerName": "45+",
-                "field": "green_45_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":valueFormatter": "params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')",
-            },
-            {
-                "headerName": "60+",
-                "field": "green_60_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 0 ? '#f97316' : '#6b7280';
-                        return `<span style="color:${color}; font-weight:600;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "90+",
-                "field": "green_90_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 0 ? '#dc2626' : '#6b7280';
-                        return `<span style="color:${color}; font-weight:700;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "120+",
-                "field": "green_120_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 0 ? '#991b1b' : '#6b7280';
-                        return `<span style="color:${color}; font-weight:700;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "% 90+",
-                "field": "green_90_plus_share_pct",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 120,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 50 ? '#dc2626' : value > 20 ? '#f97316' : '#ca8a04';
-                        return `<span style="color:${color}; font-weight:700;">${value.toFixed(1)}%</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "% 120+",
-                "field": "green_120_plus_share_pct",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 120,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 0 ? '#991b1b' : '#6b7280';
-                        return `<span style="color:${color}; font-weight:700;">${value.toFixed(1)}%</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "Макс. отсрочка",
-                "field": "max_payment_term_days",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 160,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 120 ? '#991b1b' : value > 90 ? '#dc2626' : value > 60 ? '#f97316' : '#ca8a04';
-                        return `<span style="color:${color}; font-weight:700;">${value}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "Уровень риска",
-                "field": "hidden_risk_level",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 150,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || '';
-                        const color = value === 'CRITICAL' ? '#991b1b'
-                            : value === 'HIGH' ? '#dc2626'
-                            : value === 'MEDIUM' ? '#f97316'
-                            : '#ca8a04';
-                        return `<span style="color:${color}; font-weight:700;">${value}</span>`;
-                    }
-                """,
-            },
-            {"headerName": "Накладных", "field": "invoice_count", "sortable": True, "filter": "agNumberColumnFilter", "type": "rightAligned", "minWidth": 120},
+    client_table = render_clients_table(
+        clients=df,
+        title="Контрагенты",
+        subtitle=None,
+        show_branch=True,
+        show_search=True,
+        from_route="executive-hidden-risk",
+        visible_columns=[
+            "client_group",
+            "client",
+            "rating",
+            "contract_payment_term_days",
+            "max_payment_term_days",
+            "total_debt",
+            "overdue_debt",
+            "overdue_share_pct",
+            "shifted_amount",
+            "shifted_share_pct",
+            "shifted_invoice_count",
         ],
-        "rowData": df.to_dict("records"),
-        "defaultColDef": {"resizable": True, "sortable": True, "filter": True},
-        "pagination": True,
-        "paginationPageSize": 30,
-    }).classes("w-full h-[620px] mb-6")
+    )
 
-    def open_client_card_from_grid(event):
-        args = event.args or {}
-        data = args.get("data") or {}
-        col_id = (
-            args.get("colId")
-            or (args.get("column") or {}).get("colId")
-            or (args.get("colDef") or {}).get("field")
+    def open_client(event):
+        ui.navigate.to(f"/client/{event.args}?from=executive-hidden-risk")
+
+    def open_branch(event):
+        ui.navigate.to(
+            f"/branch/{quote(str(event.args))}?from=/executive/hidden-risk"
         )
 
-        if col_id == "client_name" and data.get("client_id"):
-            ui.navigate.to(
-                f"/client/{data['client_id']}?from=executive-hidden-risk"
-            )
-
-    grid.on("cellClicked", open_client_card_from_grid)
+    if client_table is not None:
+        client_table.on("client_click", open_client)
+        client_table.on("branch_click", open_branch)

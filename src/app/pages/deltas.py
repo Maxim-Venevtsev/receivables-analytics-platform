@@ -174,16 +174,16 @@ def add_branch_summary_slots(table):
 def deltas_page():
     ui.label("Операционные изменения за день").classes("text-3xl font-bold mb-2")
     ui.label(
-        "Что изменилось между последним снэпшотом и выбранным предыдущим снэпшотом."
+        "Что изменилось между последним отчетным днем и выбранным предыдущим."
     ).classes("text-gray-500 mb-4")
 
     top_navigation()
 
     selected_offset = ui.select(
         {
-            1: "Последний снэпшот vs предыдущий",
-            2: "Последний снэпшот vs 2 снэпшота назад",
-            3: "Последний снэпшот vs 3 снэпшота назад",
+            1: "Последний отчетный день vs предыдущий",
+            2: "Последний отчетный день vs 2 отчетных дня назад",
+            3: "Последний отчетный день vs 3 отчетных дня назад",
         },
         value=1,
         label="Период сравнения",
@@ -215,7 +215,7 @@ def deltas_page():
 
         if snapshot_info.empty or pd.isna(snapshot_info.iloc[0]["base_snapshot_date"]):
             with container:
-                ui.label("Недостаточно снэпшотов для сравнения.").classes("text-red-700")
+                ui.label("Недостаточно данных для сравнения.").classes("text-red-700")
             return
 
         latest_snapshot_date = snapshot_info.iloc[0]["latest_snapshot_date"]
@@ -736,7 +736,7 @@ def deltas_page():
 
             term_shift_table = render_table(
                 "Изменение сроков оплаты",
-                "Накладные, по которым изменился срок оплаты между двумя снэпшотами.",
+                "Накладные, по которым изменился срок оплаты между двумя отчетными днями.",
                 term_shifts,
                 [
                     {"name": "client", "label": "Наименование", "field": "client_display", "align": "left", "sortable": True},
@@ -755,7 +755,7 @@ def deltas_page():
 
             new_overdue_table = render_table(
                 "Новая просрочка",
-                "Накладные, которые не были просрочены в базовом снэпшоте, но стали просроченными в последнем.",
+                "Накладные, которые не были просрочены в базовом отчете, но стали просроченными в последнем.",
                 new_overdue,
                 [
                     {"name": "client", "label": "Наименование", "field": "client_display", "align": "left", "sortable": True},

@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from urllib.parse import quote
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -9,7 +10,7 @@ from sqlalchemy import create_engine, text
 from src.app.components.navigation import top_navigation
 from src.app.components.kpi_cards import money
 from src.app.components.charts import build_long_green_exposure_chart
-from src.app.components.rating_stars import rating_aggrid_cell_renderer
+from src.app.components.clients_table import render_clients_table
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -24,18 +25,6 @@ engine = create_engine(
 def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(sql), conn, params=params)
-
-
-def date_fmt(value) -> str:
-    if pd.isna(value):
-        return ""
-    return pd.to_datetime(value).strftime("%d.%m.%Y")
-
-
-def rating_fmt(stars):
-    if pd.isna(stars):
-        return "—"
-    return f"{int(stars)}★"
 
 
 def compact_kpi(title: str, value: str, subtitle: str = ""):
@@ -62,12 +51,12 @@ def executive_long_green_page():
 
     long_green_clients = query_df("""
         SELECT *
-        FROM core.v_executive_long_green_clients
-    """)
-
-    long_green_invoices = query_df("""
-        SELECT *
-        FROM core.v_executive_long_green_invoices
+        FROM core.v_client_operational_summary
+        WHERE
+            green_45_plus_debt > 0
+            OR green_60_plus_debt > 0
+            OR green_90_plus_debt > 0
+            OR green_120_plus_debt > 0
     """)
 
     long_green_history = query_df("""
@@ -103,169 +92,33 @@ def executive_long_green_page():
         )
         ui.plotly(build_long_green_exposure_chart(long_green_history)).classes("w-full")
 
-    filtered_clients = long_green_clients.copy()
-    filtered_clients["rating_display"] = filtered_clients["stars"].apply(rating_fmt)
-
-    with ui.card().classes("w-full p-4 mb-6"):
-        ui.label("Клиенты с длинной непросроченной задолженностью").classes(
-            "text-xl font-bold mb-3"
-        )
-
-    grid_clients = ui.aggrid({
-        "columnDefs": [
-            {
-                "headerName": "Клиент",
-                "field": "client_name",
-                "sortable": True,
-                "filter": True,
-                "minWidth": 300,
-                ":cellRenderer": """
-                    params => `
-                        <span style="color:#1976d2; cursor:pointer; font-weight:500;">
-                            ${params.data.client_id} · ${params.value}
-                        </span>
-                    `
-                """,
-            },
-            {"headerName": "Филиал", "field": "client_group", "sortable": True, "filter": True, "minWidth": 140},
-            {
-                "headerName": "Рейтинг",
-                "field": "stars",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "minWidth": 120,
-                "maxWidth": 140,
-                ":cellRenderer": rating_aggrid_cell_renderer(),
-            },
-            {
-                "headerName": "45+",
-                "field": "green_45_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":valueFormatter": "params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')",
-            },
-            {
-                "headerName": "60+",
-                "field": "green_60_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":valueFormatter": "params => params.value == null ? '' : Math.round(params.value).toLocaleString('ru-RU')",
-            },
-            {
-                "headerName": "90+",
-                "field": "green_90_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 0 ? '#dc2626' : '#6b7280';
-                        return `<span style="color:${color}; font-weight:600;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "120+",
-                "field": "green_120_plus_debt",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 130,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 0 ? '#991b1b' : '#6b7280';
-                        return `<span style="color:${color}; font-weight:700;">${Math.round(value).toLocaleString('ru-RU')}</span>`;
-                    }
-                """,
-            },
-            {
-                "headerName": "Макс. отсрочка",
-                "field": "max_payment_term_days",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 150,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 120 ? '#991b1b' : value > 90 ? '#dc2626' : value > 60 ? '#f97316' : '#ca8a04';
-                        return `<span style="color:${color}; font-weight:700;">${value}</span>`;
-                    }
-                """,
-            },
-            {"headerName": "Накладных", "field": "invoice_count", "sortable": True, "filter": "agNumberColumnFilter", "type": "rightAligned", "minWidth": 120},
+    client_table = render_clients_table(
+        long_green_clients,
+        title="Контрагенты",
+        visible_columns=[
+            "client_group",
+            "client",
+            "rating",
+            "contract_payment_term_days",
+            "max_payment_term_days",
+            "total_debt",
+            "green_45_plus_debt",
+            "green_60_plus_debt",
+            "green_90_plus_debt",
+            "green_120_plus_debt",
+            "invoice_count",
         ],
-        "rowData": filtered_clients.to_dict("records"),
-        "defaultColDef": {"resizable": True, "sortable": True, "filter": True},
-        "pagination": True,
-        "paginationPageSize": 25,
-        }).classes("w-full h-[420px] mb-6")
+        show_branch=True,
+        show_search=True,
+        from_route="executive-long-green",
+    )
 
-    def open_client_card_from_grid(event):
-        args = event.args or {}
-        data = args.get("data") or {}
-        col_id = (
-            args.get("colId")
-            or (args.get("column") or {}).get("colId")
-            or (args.get("colDef") or {}).get("field")
-        )
+    def open_client(event):
+        ui.navigate.to(f"/client/{event.args}?from=executive-long-green")
 
-        if col_id == "client_name" and data.get("client_id"):
-            ui.navigate.to(f"/client/{data['client_id']}?from=executive-long-green")
+    def open_branch(event):
+        ui.navigate.to(f"/branch/{quote(str(event.args))}?from=/executive/long-green")
 
-    grid_clients.on("cellClicked", open_client_card_from_grid)
-
-    invoices = long_green_invoices.copy()
-    invoices["invoice_date_fmt"] = invoices["invoice_date"].apply(date_fmt)
-    invoices["due_date_fmt"] = invoices["due_date"].apply(date_fmt)
-
-    with ui.card().classes("w-full p-4 mb-6"):
-        ui.label("Накладные с длинной отсрочкой").classes("text-xl font-bold mb-3")
-
-    ui.aggrid({
-        "columnDefs": [
-            {"headerName": "Клиент", "field": "client_name", "sortable": True, "filter": True, "minWidth": 300},
-            {"headerName": "Филиал", "field": "client_group", "sortable": True, "filter": True, "minWidth": 140},
-            {"headerName": "Рейтинг", "field": "rating_display_label", "sortable": True, "filter": True, "minWidth": 180},
-            {"headerName": "Дата накладной", "field": "invoice_date_fmt", "sortable": True, "filter": True, "minWidth": 140},
-            {"headerName": "Оплатить до", "field": "due_date_fmt", "sortable": True, "filter": True, "minWidth": 140},
-            {
-                "headerName": "Сумма",
-                "field": "invoice_amount",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 140,
-                ":valueFormatter": "params => params.value == null ? '' : Number(params.value).toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2})",
-            },
-            {
-                "headerName": "Отсрочка, дней",
-                "field": "payment_term_days",
-                "sortable": True,
-                "filter": "agNumberColumnFilter",
-                "type": "rightAligned",
-                "minWidth": 160,
-                ":cellRenderer": """
-                    params => {
-                        const value = params.value || 0;
-                        const color = value > 120 ? '#991b1b' : value > 90 ? '#dc2626' : value > 60 ? '#f97316' : '#ca8a04';
-                        return `<span style="color:${color}; font-weight:700;">${value}</span>`;
-                    }
-                """,
-            },
-            {"headerName": "Корзина", "field": "payment_term_bucket", "sortable": True, "filter": True, "minWidth": 120},
-            {"headerName": "Печ. номер", "field": "print_invoice_number", "sortable": True, "filter": True, "minWidth": 150},
-            {"headerName": "Номер заказа", "field": "order_number", "sortable": True, "filter": True, "minWidth": 150},
-        ],
-        "rowData": invoices.to_dict("records"),
-        "defaultColDef": {"resizable": True, "sortable": True, "filter": True},
-        "pagination": True,
-        "paginationPageSize": 50,
-        }).classes("w-full h-[520px] mb-6")
+    if client_table is not None:
+        client_table.on("client_click", open_client)
+        client_table.on("branch_click", open_branch)
