@@ -145,3 +145,26 @@ Clients whose rating worsened between the beginning and end of the selected peri
 ```text
 upgraded_clients - downgraded_clients
 ```
+
+
+## Payment Attention metrics
+
+### Normal payment window
+
+Debt currently located inside the client's usual payment behavior window.
+
+### Out-of-window debt
+
+Debt exceeding the client's usual payment behavior window.
+
+### Repeat-shift exposure
+
+Exposure related to invoices with repeated due-date extensions.
+
+### Contract payment term
+
+Inferred standard payment term based on stable historical behavior.
+
+### Maximum payment term
+
+Maximum observed payment term, including extreme outliers.

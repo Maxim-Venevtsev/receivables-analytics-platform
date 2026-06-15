@@ -908,3 +908,27 @@ Recommended next documentation updates:
 3. Notifications.
 4. Real payment history integration.
 5. Predictive risk analytics.
+
+
+---
+
+## Next major milestone
+
+### Production deployment
+
+Planned immediately after documentation release:
+
+- password protection;
+- production hosting;
+- backup procedures;
+- automated ingestion;
+- deployment checklist;
+- production monitoring.
+
+### Demo / Work separation
+
+Future architecture task:
+
+- isolated public demo environment;
+- isolated production environment;
+- independent release workflow.

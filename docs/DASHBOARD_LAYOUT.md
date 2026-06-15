@@ -86,3 +86,46 @@ Contains:
 - long green debt columns;
 - Credit Quality weighted rating;
 - navigation to Branch Card.
+
+
+---
+
+## New operational pages (June 2026)
+
+### Payment Attention
+
+Purpose:
+
+Detect clients that are still non-overdue but already require operational attention.
+
+Main blocks:
+
+1. KPI cards.
+2. Branch table.
+3. Client table.
+
+Key metrics:
+
+- Normal payment window.
+- Out-of-window exposure.
+- Repeated term shifts.
+- Clients requiring control.
+
+### Term Shifts
+
+Purpose:
+
+Monitor invoices whose due dates were changed after issuance.
+
+Main blocks:
+
+1. KPI cards.
+2. Branch table.
+3. Client table.
+
+Highlights:
+
+- shift amount;
+- shift count;
+- repeated shifts;
+- invoice-level drill-down.

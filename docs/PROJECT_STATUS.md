@@ -437,3 +437,24 @@ Current build is suitable for:
 4. Tune YAML thresholds based on observed false positives / false negatives.
 5. Start production deployment preparation for password-protected real-data environment.
 6. Decide whether to push current local commits to remote, depending on repository privacy and deployment workflow.
+
+
+---
+
+## June 2026 release update
+
+Completed:
+
+- Branch Table refactor.
+- Unified operational page layouts.
+- Payment Attention page.
+- Term Shifts page.
+- Executive Branch Health improvements.
+- Executive portfolio bucket correction.
+- Contract payment-term outlier handling.
+- Recent paid invoice behavior analytics.
+- Correct date and numeric sorting across reusable tables.
+
+Current deployment target:
+
+- password-protected production deployment on maximvenevtsev.com

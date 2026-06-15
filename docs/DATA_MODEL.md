@@ -615,3 +615,29 @@ The current model does not yet include:
 - branch-level access control;
 - automated downgrade alert workflow;
 - scheduled production ETL.
+
+
+---
+
+## Payment behavior layer
+
+Additional business concepts introduced in June 2026:
+
+### Contract Payment Term
+
+Client's stable expected payment term inferred from historical behavior and protected from anomalous invoices.
+
+### Usual Payment Window
+
+Observed payment behavior range used by Payment Attention monitoring.
+
+### Recent Paid Invoice Behavior
+
+Behavioral layer derived from recently paid invoices:
+
+- early payment;
+- normal payment;
+- later than usual;
+- overdue payment.
+
+Used by Client, Parent Organization and Branch cards.

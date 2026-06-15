@@ -638,3 +638,22 @@ Sanitized demo datasets can be generated from normalized PostgreSQL views using:
 ```bash
 python tools/export_demo_dataset.py
 ```
+
+
+---
+
+# June 2026 release highlights
+
+New operational capabilities:
+
+- Payment Attention page;
+- Term Shifts page;
+- Branch Table reusable component;
+- Recent Paid Invoice analytics;
+- Contract Payment Term detection;
+- Usual Payment Window monitoring;
+- Executive Branch Health enhancements;
+- portfolio bucket consistency fixes;
+- unified sorting and operational table behavior.
+
+The platform now supports both overdue-risk detection and early identification of non-overdue clients whose payment behavior deviates from their historical norm.
