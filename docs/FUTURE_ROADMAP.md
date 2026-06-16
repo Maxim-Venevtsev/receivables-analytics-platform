@@ -12,6 +12,28 @@ Project timeline note:
 
 # 1. Completed / ready locally
 
+## 1.0 Production MVP Deployment v1
+
+Status: **COMPLETED**
+
+Implemented:
+
+- private work deployment at `https://work.maximvenevtsev.com`;
+- release tag: `work-deploy-v1`;
+- isolated work application directory: `/home/deploy/receivables-work`;
+- isolated work database: `receivables_work`;
+- systemd service: `receivables-work`;
+- Nginx reverse proxy on port `8081`;
+- Nginx Basic Auth protection;
+- HTTPS with Let's Encrypt;
+- real operational snapshots loaded into the work database;
+- dashboard latest snapshot date;
+- work browser title and favicon.
+
+The existing public demo remains available at `https://demo.maximvenevtsev.com` on the separate demo environment.
+
+---
+
 ## 1.1 Operational MVP
 
 Status: **READY**
@@ -331,47 +353,40 @@ Recommended approach:
 
 ---
 
-# 3. Next product milestones
+# 3. Immediate stabilization
 
-## 3.1 Production deployment of real work environment
+## 3.1 Production hardening after work deployment v1
 
-Status: **PLANNED / HIGH PRIORITY**
+Status: **IMMEDIATE**
 
 Goal:
 
-Deploy password-protected real-data version alongside the demo environment.
+Stabilize the private work deployment after Production MVP Deployment v1.
 
 Scope:
 
-- protected access;
-- server deployment;
-- environment separation;
-- scheduled ingestion;
-- logging;
-- backup strategy;
-- service restart policy;
-- data refresh workflow.
-
-Important decision:
-
-Decide whether the client receives:
-
-- trial package: data stays on client server, source code protected as much as practical;
-- full package: all scripts, documentation and pipeline logic transferred.
+- daily PostgreSQL backups;
+- restore test;
+- scheduled ETL/email ingestion;
+- password rotation;
+- optional SSH deploy key instead of HTTPS token;
+- backup logs;
+- ingestion failure visibility.
 
 ---
 
 ## 3.2 Scheduled ETL
 
-Status: **PLANNED**
+Status: **IMMEDIATE STABILIZATION TASK**
 
 Goal:
 
-Automate daily ingestion.
+Automate daily ingestion for the private work environment.
 
 Planned capabilities:
 
 - scheduled file pickup;
+- email/report ingestion workflow;
 - ingestion run logging;
 - failure notifications;
 - archive / failed folder management;
@@ -383,11 +398,16 @@ Planned capabilities:
 
 ## 3.3 Authentication and user management
 
-Status: **PLANNED**
+Status: **PARTIALLY IMPLEMENTED / EXTEND LATER**
 
-Minimum production scope:
+Current scope:
 
-- password protection;
+- Nginx Basic Auth protects the private work deployment;
+- Basic Auth credentials are stored on the server only.
+
+Minimum next scope:
+
+- password rotation;
 - admin user;
 - read-only users;
 - session handling;
@@ -403,7 +423,7 @@ Later scope:
 
 ## 3.4 Backup and data retention
 
-Status: **PLANNED**
+Status: **IMMEDIATE STABILIZATION TASK**
 
 Planned capabilities:
 
@@ -415,9 +435,36 @@ Planned capabilities:
 
 ---
 
-# 4. Credit policy and exposure analytics
+# 4. Next product milestones
 
-## 4.1 Credit Policy Monitoring: ARS_New / НО
+## 4.1 Production operations maturity
+
+Status: **NEXT**
+
+Goal:
+
+Move from Production MVP Deployment v1 to a durable operational production setup.
+
+Scope:
+
+- scheduled ingestion;
+- logging;
+- backup strategy;
+- restore procedure;
+- data refresh workflow.
+
+Important decision:
+
+Decide whether the client receives:
+
+- trial package: data stays on client server, source code protected as much as practical;
+- full package: all scripts, documentation and pipeline logic transferred.
+
+---
+
+# 5. Credit policy and exposure analytics
+
+## 5.1 Credit Policy Monitoring: ARS_New / НО
 
 Status: **RESEARCH COMPLETED / LOW CURRENT MATERIALITY / PARKED**
 
@@ -446,7 +493,7 @@ Keep SQL discovery artifacts, but do not prioritize full productization until st
 
 ---
 
-## 4.2 Credit exposure and credit-limit monitoring
+## 5.2 Credit exposure and credit-limit monitoring
 
 Status: **PLANNED**
 
@@ -475,9 +522,9 @@ Support practical credit-control and shipment approval decisions.
 
 ---
 
-# 5. Workflow and collection management
+# 6. Workflow and collection management
 
-## 5.1 Comments and action tracking
+## 6.1 Comments and action tracking
 
 Status: **PLANNED**
 
@@ -497,7 +544,7 @@ Turn the dashboard from analytics into a lightweight collection workflow tool.
 
 ---
 
-## 5.2 Notification system
+## 6.2 Notification system
 
 Status: **PLANNED**
 
@@ -513,7 +560,7 @@ Potential capabilities:
 
 ---
 
-## 5.3 Collection efficiency analytics
+## 6.3 Collection efficiency analytics
 
 Status: **PLANNED**
 
@@ -532,9 +579,9 @@ Measure operational effectiveness of collection activities.
 
 ---
 
-# 6. Advanced behavioral analytics
+# 7. Advanced behavioral analytics
 
-## 6.1 Payment behavior profiling
+## 7.1 Payment behavior profiling
 
 Status: **PLANNED**
 
@@ -553,7 +600,7 @@ Purpose:
 
 Improve Credit Quality V2 using actual payment behavior rather than only open receivables snapshots.
 
-## 6.1.1 Analytics Segment Monitoring
+## 7.1.1 Analytics Segment Monitoring
 
 Status: **PLANNED**
 
@@ -632,7 +679,7 @@ Avoid mixing fundamentally different business processes into a single portfolio 
 
 ---
 
-## 6.2 Predictive collection risk
+## 7.2 Predictive collection risk
 
 Status: **FUTURE / RESEARCH**
 
@@ -655,7 +702,7 @@ Potential outputs:
 
 ---
 
-## 6.3 Behavioral anomaly detection
+## 7.3 Behavioral anomaly detection
 
 Status: **FUTURE / RESEARCH**
 
@@ -684,9 +731,9 @@ Future improvements:
 
 ---
 
-# 7. Parent organization and branch analytics
+# 8. Parent organization and branch analytics
 
-## 7.1 Parent organization advanced analytics
+## 8.1 Parent organization advanced analytics
 
 Status: **PARTIALLY IMPLEMENTED / EXTEND LATER**
 
@@ -709,7 +756,7 @@ Possible improvements:
 
 ---
 
-## 7.2 Branch advanced analytics
+## 8.2 Branch advanced analytics
 
 Status: **PARTIALLY IMPLEMENTED / EXTEND LATER**
 
@@ -734,7 +781,7 @@ Possible improvements:
 
 ---
 
-## 7.3 User-defined branch groups
+## 8.3 User-defined branch groups
 
 Status: **PLANNED**
 
@@ -748,9 +795,9 @@ Potential capabilities:
 
 ---
 
-# 8. Data quality and governance
+# 9. Data quality and governance
 
-## 8.1 Data quality controls
+## 9.1 Data quality controls
 
 Status: **PLANNED**
 
@@ -774,7 +821,7 @@ Potential outputs:
 
 ---
 
-## 8.2 Data contract hardening
+## 9.2 Data contract hardening
 
 Status: **PLANNED**
 
@@ -789,9 +836,9 @@ Potential tasks:
 
 ---
 
-# 9. Frontend and UX evolution
+# 10. Frontend and UX evolution
 
-## 9.1 Reusable dashboard widgets
+## 10.1 Reusable dashboard widgets
 
 Status: **ONGOING**
 
@@ -815,7 +862,7 @@ Possible improvements:
 
 ---
 
-## 9.2 Persistent filters and layout personalization
+## 10.2 Persistent filters and layout personalization
 
 Status: **PLANNED**
 
@@ -828,7 +875,7 @@ Potential capabilities:
 
 ---
 
-## 9.3 Mobile and responsive polish
+## 10.3 Mobile and responsive polish
 
 Status: **PLANNED**
 
@@ -841,7 +888,7 @@ Potential improvements:
 
 ---
 
-# 10. Multi-currency support
+# 11. Multi-currency support
 
 Status: **PLANNED / LOW PRIORITY UNTIL NEEDED**
 
@@ -855,7 +902,7 @@ Potential capabilities:
 
 ---
 
-# 11. Documentation roadmap
+# 12. Documentation roadmap
 
 Status: **ONGOING**
 
@@ -882,24 +929,25 @@ Recommended next documentation updates:
 
 ---
 
-# 12. Recommended next development sequence
+# 13. Recommended next development sequence
 
 ## Immediate
 
-1. Commit current documentation update.
-2. Continue daily snapshot accumulation.
-3. Monitor Credit Quality V2 outputs on real clients.
-4. Tune YAML thresholds after 1–2 weeks of observation.
-5. Prepare production deployment checklist.
+1. Add daily PostgreSQL backups for `receivables_work`.
+2. Perform and document a restore test.
+3. Configure scheduled ETL/email ingestion.
+4. Rotate deployment and Basic Auth passwords.
+5. Optionally switch deployment access from HTTPS token to SSH deploy key.
+6. Continue daily snapshot accumulation.
+7. Monitor Credit Quality V2 outputs on real clients.
+8. Tune YAML thresholds after 1–2 weeks of observation.
 
 ## Next product cycle
 
-1. Production deployment with password protection.
-2. Scheduled ETL.
-3. Backup strategy.
-4. Credit Quality V2 historical snapshots.
-5. Credit Quality migration analytics.
-6. Branch-level green debt maturity visualization.
+1. Credit Quality V2 historical snapshots.
+2. Credit Quality migration analytics.
+3. Branch-level green debt maturity visualization.
+4. Production operations dashboard.
 
 ## Later
 
@@ -916,18 +964,23 @@ Recommended next documentation updates:
 
 ### Production deployment
 
-Planned immediately after documentation release:
+Completed:
 
-- password protection;
+- private work deployment at `https://work.maximvenevtsev.com`;
 - production hosting;
+- password protection through Nginx Basic Auth;
+- demo/work environment separation.
+
+Remaining production stabilization:
+
 - backup procedures;
 - automated ingestion;
-- deployment checklist;
+- restore testing;
 - production monitoring.
 
 ### Demo / Work separation
 
-Future architecture task:
+Completed baseline:
 
 - isolated public demo environment;
 - isolated production environment;

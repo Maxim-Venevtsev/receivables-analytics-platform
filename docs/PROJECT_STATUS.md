@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Status: **Advanced operational MVP / controlled-demo ready locally**.
+Status: **Production MVP Deployment v1 completed for private work environment**.
 
 The system now supports:
 
@@ -205,6 +205,38 @@ Implemented:
 
 ## Recently completed major phase
 
+## Production MVP Deployment v1
+
+Status: **COMPLETED**
+
+The private work deployment is now live:
+
+- URL: `https://work.maximvenevtsev.com`;
+- release tag: `work-deploy-v1`;
+- private GitHub remote: `work`;
+- server: Ubuntu 24.04 VPS, `83.220.168.3`;
+- work app directory: `/home/deploy/receivables-work`;
+- systemd service: `receivables-work`;
+- database: `receivables_work`;
+- app port: `8081`;
+- access protection: Nginx Basic Auth;
+- HTTPS: Let's Encrypt certificate for `work.maximvenevtsev.com`;
+- dashboard shows latest snapshot date from the database;
+- browser title is `Кофточки+`;
+- favicon is enabled.
+
+The existing public demo remains available at `https://demo.maximvenevtsev.com` with anonymized/generated data.
+
+Immediate stabilization tasks:
+
+- daily PostgreSQL backups;
+- restore test;
+- scheduled ETL/email ingestion;
+- password rotation;
+- optional SSH deploy key instead of HTTPS token.
+
+---
+
 ## Credit Quality Rating V2
 
 Status: **COMPLETED LOCALLY**
@@ -267,11 +299,12 @@ Validated examples:
 
 ### Real-data work environment
 
-Status: **READY LOCALLY**
+Status: **DEPLOYED AS PRIVATE PRODUCTION MVP V1**
 
 Implemented:
 
 - separate local work database: `debt_management_work`;
+- server work database: `receivables_work`;
 - `.env`-driven ingestion configuration;
 - isolated raw work directory;
 - incremental ingestion workflow;
@@ -390,10 +423,8 @@ NiceGUI operational frontend
 
 Not yet implemented:
 
-- production authentication;
 - role model;
 - scheduled ETL;
-- production deployment of real environment;
 - automated backups;
 - user action history;
 - comments/workflow tracking;
@@ -407,6 +438,8 @@ Not yet implemented:
 ## Data status
 
 Current work environment uses real operational datasets loaded into a local work database.
+
+Private work deployment now contains real snapshots in `receivables_work`.
 
 Current limitations:
 
@@ -431,12 +464,14 @@ Current build is suitable for:
 
 ## Recommended immediate next steps
 
-1. Commit documentation update after Credit Quality V2 implementation.
-2. Continue daily snapshot accumulation.
-3. Validate Credit Quality V2 on real examples for 1–2 weeks.
-4. Tune YAML thresholds based on observed false positives / false negatives.
-5. Start production deployment preparation for password-protected real-data environment.
-6. Decide whether to push current local commits to remote, depending on repository privacy and deployment workflow.
+1. Add daily PostgreSQL backups for `receivables_work`.
+2. Perform and document a restore test.
+3. Configure scheduled ETL/email ingestion.
+4. Rotate deployment and Basic Auth passwords.
+5. Optionally switch deployment access from HTTPS token to SSH deploy key.
+6. Continue daily snapshot accumulation.
+7. Validate Credit Quality V2 on real examples for 1–2 weeks.
+8. Tune YAML thresholds based on observed false positives / false negatives.
 
 
 ---
@@ -457,4 +492,4 @@ Completed:
 
 Current deployment target:
 
-- password-protected production deployment on maximvenevtsev.com
+- private production MVP at `https://work.maximvenevtsev.com`
