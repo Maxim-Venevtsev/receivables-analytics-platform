@@ -29,6 +29,7 @@ from src.app.components.branch_table import render_branch_table
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+APP_DIR = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
 
 engine = create_engine(
@@ -69,6 +70,19 @@ DASHBOARD_BRANCH_COLUMNS = [
 def query_df(sql: str) -> pd.DataFrame:
     with engine.connect() as conn:
         return pd.read_sql(text(sql), conn)
+
+
+def get_latest_snapshot_date() -> str:
+    try:
+        with engine.connect() as conn:
+            value = conn.execute(text("""
+                SELECT MAX(report_generated_date)
+                FROM core.receivables_snapshot_fact
+            """)).scalar()
+    except Exception:
+        return "—"
+
+    return value.strftime("%d.%m.%Y") if value else "—"
 
 
 def money(value) -> str:
@@ -203,7 +217,10 @@ def dashboard():
     ui.label("АРС — Дебиторка").classes("text-3xl font-bold mb-2")
     ui.label(
         "Операционный центр контроля дебиторской задолженности."
-    ).classes("text-gray-500 mb-4")
+    ).classes("text-gray-500 mb-1")
+    ui.label(
+        f"Данные обновлены: {get_latest_snapshot_date()}"
+    ).classes("text-xs text-gray-500 mb-4")
 
     top_navigation()
 
@@ -517,4 +534,4 @@ def dashboard():
     reset_branch_button.on_click(reset_branch_filter)
 
 
-ui.run()
+ui.run(title="Кофточки+", favicon=str(APP_DIR / "static" / "favicon.svg"))
