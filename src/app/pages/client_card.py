@@ -47,6 +47,56 @@ def query_df(sql: str, params: dict = None) -> pd.DataFrame:
         return pd.read_sql(text(sql), conn, params=params)
 
 
+def query_optional_df(sql: str, params: dict = None) -> pd.DataFrame:
+    try:
+        return query_df(sql, params=params)
+    except Exception:
+        return pd.DataFrame()
+
+
+def date_fmt(value) -> str:
+    if pd.isna(value):
+        return "—"
+    return pd.to_datetime(value).strftime("%d.%m.%Y")
+
+
+def get_historical_client_identity(client_id: str) -> pd.DataFrame:
+    return query_optional_df("""
+        WITH client_daily AS (
+            SELECT
+                report_generated_date,
+                client_id,
+                MAX(client_name) AS client_name,
+                MAX(client_group) AS client_group,
+                MAX(parent_org_id) AS parent_org_id,
+                SUM(invoice_amount) AS total_debt
+            FROM core.receivables_snapshot_fact
+            WHERE client_id = :client_id
+            GROUP BY
+                report_generated_date,
+                client_id
+        ),
+        client_bounds AS (
+            SELECT
+                MIN(report_generated_date) AS first_seen,
+                MAX(report_generated_date) AS last_seen
+            FROM client_daily
+        )
+        SELECT
+            d.client_id,
+            d.client_name,
+            d.client_group,
+            d.parent_org_id,
+            b.first_seen,
+            b.last_seen,
+            d.total_debt AS last_debt_amount
+        FROM client_daily d
+        CROSS JOIN client_bounds b
+        WHERE d.report_generated_date = b.last_seen
+        LIMIT 1
+    """, {"client_id": client_id})
+
+
 def aging_bucket(row) -> str:
     if row["is_overdue_real"]:
         days = int(row["days_overdue_real"])
@@ -66,6 +116,140 @@ def aging_bucket(row) -> str:
         return "К оплате в ближайшие дни"
 
     return "Не просрочено"
+
+
+def render_history_section(history_df: pd.DataFrame, rating_migration: pd.DataFrame):
+    if history_df.empty:
+        return
+
+    selected_period = ui.toggle(
+        options=["28", "90", "180", "Все"],
+        value="28",
+    ).props("outline").classes("mb-4")
+
+    charts_container = ui.column().classes("w-full")
+
+    def get_selected_period_label() -> str:
+        if selected_period.value == "Все":
+            return "Все"
+        return f"{selected_period.value} дней"
+
+    def get_rating_migration_for_selected_period() -> pd.DataFrame:
+        if rating_migration.empty:
+            return rating_migration
+
+        return rating_migration[
+            rating_migration["period_label"] == get_selected_period_label()
+        ]
+
+    def get_history_filtered() -> pd.DataFrame:
+
+        result = history_df.copy()
+
+        if selected_period.value != "Все":
+
+            days = int(selected_period.value)
+
+            max_date = result["report_generated_date"].max()
+
+            result = result[
+                result["report_generated_date"]
+                >= max_date - pd.Timedelta(days=days)
+            ]
+
+        return result
+
+    def get_history_kpi(history_filtered: pd.DataFrame) -> dict:
+        history_days = int(history_filtered["report_generated_date"].nunique())
+        overdue_days = int((history_filtered["overdue_debt"] > 0).sum())
+
+        avg_overdue_share = (
+            float(history_filtered["overdue_share_pct"].mean())
+            if not history_filtered.empty
+            else 0
+        )
+
+        max_days_overdue = (
+            int(history_filtered["max_days_overdue"].max())
+            if not history_filtered.empty
+            else 0
+        )
+
+        return {
+            "history_days": history_days,
+            "overdue_days": overdue_days,
+            "avg_overdue_share": avg_overdue_share,
+            "max_days_overdue": max_days_overdue,
+        }
+
+    def render_history_charts():
+
+        history_filtered = get_history_filtered()
+
+        history_kpi = get_history_kpi(history_filtered)
+
+        charts_container.clear()
+
+        with charts_container:
+
+            rating_migration_selected = get_rating_migration_for_selected_period()
+
+            if not rating_migration_selected.empty:
+                render_rating_migration_strip(
+                    rating_migration_selected.iloc[0]
+                )
+
+            ui.label("Ключевые показатели за период").classes(
+                "text-sm text-gray-500 mb-3"
+            )
+
+            with ui.row().classes("gap-4 mb-6"):
+                compact_kpi_card(
+                    "Дней в истории",
+                    str(history_kpi["history_days"]),
+                )
+                compact_kpi_card(
+                    "Дней с просрочкой",
+                    str(history_kpi["overdue_days"]),
+                )
+                compact_kpi_card(
+                    "Средняя просрочка",
+                    percent(history_kpi["avg_overdue_share"]),
+                )
+
+            with ui.card().classes("w-full p-4 mb-6"):
+
+                ui.label(
+                    "История задолженности"
+                ).classes(
+                    "text-sm text-gray-500 mb-3"
+                )
+
+                history_chart = build_client_debt_history_chart(
+                    history_filtered
+                )
+
+                ui.plotly(history_chart).classes("w-full")
+
+            with ui.card().classes("w-full p-4 mb-6"):
+
+                ui.label(
+                    "Структура задолженности по дням"
+                ).classes(
+                    "text-sm text-gray-500 mb-3"
+                )
+
+                structure_chart = build_client_debt_structure_chart(
+                    history_filtered
+                )
+
+                ui.plotly(structure_chart).classes("w-full")
+
+    selected_period.on_value_change(
+        lambda _: render_history_charts()
+    )
+
+    render_history_charts()
 
 
 @ui.page("/client/{client_id}")
@@ -151,8 +335,160 @@ def client_card_page(client_id: str, request: Request):
     """, {"client_id": client_id})
 
     if df.empty:
-        ui.label(f"Карточка клиента: {client_id}").classes("text-3xl font-bold mb-4")
-        ui.label("Нет данных по клиенту")
+        historical_client = get_historical_client_identity(client_id)
+
+        if historical_client.empty:
+            ui.label(f"Карточка клиента: {client_id}").classes("text-3xl font-bold mb-4")
+            ui.label("Нет данных по клиенту")
+            return
+
+        history_df = query_optional_df("""
+            SELECT
+                report_generated_date,
+                total_debt,
+                normal_debt,
+                due_soon_only,
+                due_today,
+                overdue_debt,
+                overdue_share_pct,
+                max_days_overdue
+            FROM core.v_client_daily_history
+            WHERE client_id = :client_id
+            ORDER BY report_generated_date
+        """, {"client_id": client_id})
+
+        rating_migration = query_optional_df("""
+            SELECT
+                period_label,
+                period_days,
+                sort_order,
+                start_snapshot_date,
+                end_snapshot_date,
+                client_id,
+                client_name,
+                parent_org_id,
+                client_group,
+                start_stars,
+                end_stars,
+                start_rating_label,
+                end_rating_label,
+                start_confidence_level,
+                end_confidence_level,
+                rating_delta,
+                migration_status,
+                migration_label,
+                rating_change_label
+            FROM core.v_executive_rating_migration_clients
+            WHERE client_id = :client_id
+        """, {"client_id": client_id})
+
+        paid_invoices = query_optional_df("""
+            SELECT
+                p.client_id,
+                p.client_name,
+                p.client_group,
+                p.parent_org_id,
+
+                p.print_invoice_number,
+                p.order_number,
+                p.invoice_date,
+                p.due_date,
+                p.analytics_type,
+                p.payment_term_days,
+
+                p.original_invoice_amount,
+                p.amount_before_payment,
+                p.amount_after_payment,
+                p.paid_amount_detected,
+
+                p.last_seen_snapshot,
+                p.estimated_payment_date,
+                p.payment_event_type,
+
+                p.actual_payment_term_days,
+                p.days_vs_due_date,
+                p.payment_behavior_bucket,
+
+                COALESCE(ts.term_shift_count, 0) AS term_shift_count,
+                COALESCE(ts.current_term_delta_days, 0) AS term_shift_delta_days
+
+            FROM core.v_recent_paid_invoices_behavior p
+
+            LEFT JOIN core.v_term_shift_invoice_summary ts
+                ON p.client_id = ts.client_id
+               AND p.print_invoice_number = ts.print_invoice_number
+               AND p.order_number = ts.order_number
+               AND p.invoice_date = ts.invoice_date
+
+            WHERE p.client_id = :client_id
+
+            ORDER BY
+                p.estimated_payment_date DESC,
+                p.paid_amount_detected DESC
+
+            LIMIT 20
+        """, {"client_id": client_id})
+
+        client = historical_client.iloc[0]
+        client_name = client.get("client_name") or "—"
+        client_group = client.get("client_group")
+        parent_org_id = client.get("parent_org_id")
+        payment_behavior_metrics = get_payment_behavior_metrics(paid_invoices)
+
+        with ui.row().classes("w-full items-center gap-4 mb-1"):
+            ui.label(f"Карточка клиента: {client_name}").classes("text-3xl font-bold")
+
+        with ui.row().classes("items-center gap-1 text-sm text-gray-500 mb-4"):
+            ui.label(f"Клиент ID: {client_id}")
+
+            if pd.notna(parent_org_id):
+                ui.label("· Вышестоящая организация:")
+                ui.button(
+                    str(parent_org_id),
+                    on_click=lambda: ui.navigate.to(
+                        f"/parent-org/{parent_org_id}?from=client&client_id={client_id}"
+                    )
+                ).props("flat dense color=primary").classes("p-0 min-h-0")
+
+            if pd.notna(client_group):
+                ui.label("· Филиал:")
+                ui.button(
+                    str(client_group),
+                    on_click=lambda: ui.navigate.to(
+                        f"/branch/{quote(str(client_group))}"
+                        f"?from=/client/{client_id}"
+                    )
+                ).props("flat dense color=primary").classes("p-0 min-h-0")
+
+        top_navigation()
+
+        with ui.row().classes("mb-4"):
+            ui.button(
+                "← Назад",
+                on_click=lambda: ui.navigate.to(back_target)
+            ).props("flat color=primary")
+
+        ui.label(
+            "Текущей открытой задолженности нет. Клиент отсутствует в последнем срезе, "
+            "но найден в истории."
+        ).classes("text-sm text-gray-600 mb-4")
+
+        with ui.row().classes("gap-4 mb-6"):
+            compact_kpi_card("Текущая задолженность", money(0))
+            compact_kpi_card("Последний срез", date_fmt(client.get("last_seen")))
+            compact_kpi_card("Последняя сумма", money(client.get("last_debt_amount")))
+            compact_kpi_card("Первый срез", date_fmt(client.get("first_seen")))
+
+        render_history_section(history_df, rating_migration)
+
+        render_paid_invoices_table(
+            paid_invoices=paid_invoices,
+            payment_behavior_metrics=payment_behavior_metrics,
+            show_branch=False,
+            show_client=False,
+            title="Последние оплаченные накладные",
+        )
+
         return
     
     if "shifted_amount" not in df.columns:
@@ -465,137 +801,7 @@ def client_card_page(client_id: str, request: Request):
 
     # === Historical analytics ===
 
-    if not history_df.empty:
-
-        selected_period = ui.toggle(
-            options=["28", "90", "180", "Все"],
-            value="28",
-        ).props("outline").classes("mb-4")
-
-        charts_container = ui.column().classes("w-full")
-
-        def get_selected_period_label() -> str:
-            if selected_period.value == "Все":
-                return "Все"
-            return f"{selected_period.value} дней"
-
-        def get_rating_migration_for_selected_period() -> pd.DataFrame:
-            if rating_migration.empty:
-                return rating_migration
-
-            return rating_migration[
-                rating_migration["period_label"] == get_selected_period_label()
-            ]
-
-        def get_history_filtered() -> pd.DataFrame:
-
-            result = history_df.copy()
-
-            if selected_period.value != "Все":
-
-                days = int(selected_period.value)
-
-                max_date = result["report_generated_date"].max()
-
-                result = result[
-                    result["report_generated_date"]
-                    >= max_date - pd.Timedelta(days=days)
-                ]
-
-            return result
-
-        def get_history_kpi(history_filtered: pd.DataFrame) -> dict:
-            history_days = int(history_filtered["report_generated_date"].nunique())
-            overdue_days = int((history_filtered["overdue_debt"] > 0).sum())
-
-            avg_overdue_share = (
-                float(history_filtered["overdue_share_pct"].mean())
-                if not history_filtered.empty
-                else 0
-            )
-
-            max_days_overdue = (
-                int(history_filtered["max_days_overdue"].max())
-                if not history_filtered.empty
-                else 0
-            )
-
-            return {
-                "history_days": history_days,
-                "overdue_days": overdue_days,
-                "avg_overdue_share": avg_overdue_share,
-                "max_days_overdue": max_days_overdue,
-            }
-
-        def render_history_charts():
-
-            history_filtered = get_history_filtered()
-
-            history_kpi = get_history_kpi(history_filtered)
-
-            charts_container.clear()
-
-            with charts_container:
-
-                rating_migration_selected = get_rating_migration_for_selected_period()
-
-                if not rating_migration_selected.empty:
-                    render_rating_migration_strip(
-                        rating_migration_selected.iloc[0]
-                    )
-
-
-                ui.label("Ключевые показатели за период").classes(
-                    "text-sm text-gray-500 mb-3"
-                )
-
-                with ui.row().classes("gap-4 mb-6"):
-                    compact_kpi_card(
-                        "Дней в истории",
-                        str(history_kpi["history_days"]),
-                    )
-                    compact_kpi_card(
-                        "Дней с просрочкой",
-                        str(history_kpi["overdue_days"]),
-                    )
-                    compact_kpi_card(
-                        "Средняя просрочка",
-                        percent(history_kpi["avg_overdue_share"]),
-                    )
-
-                with ui.card().classes("w-full p-4 mb-6"):
-
-                    ui.label(
-                        "История задолженности"
-                    ).classes(
-                        "text-sm text-gray-500 mb-3"
-                    )
-
-                    history_chart = build_client_debt_history_chart(
-                        history_filtered
-                    )
-
-                    ui.plotly(history_chart).classes("w-full")
-
-                with ui.card().classes("w-full p-4 mb-6"):
-
-                    ui.label(
-                        "Структура задолженности по дням"
-                    ).classes(
-                        "text-sm text-gray-500 mb-3"
-                    )
-
-                    structure_chart = build_client_debt_structure_chart(
-                        history_filtered
-                    )
-
-                    ui.plotly(structure_chart).classes("w-full")
-
-        selected_period.on_value_change(
-            lambda _: render_history_charts()
-        )
-
-        render_history_charts()
+    render_history_section(history_df, rating_migration)
 
     # === Active invoices table ===
 
