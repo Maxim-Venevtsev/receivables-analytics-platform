@@ -40,3 +40,16 @@ __pycache__/
 Thumbs.db
 
 schema_only.sql
+
+# backups / database dumps
+*.dump
+*.backup
+*.bak
+*.sql.gz
+
+# local database exports
+backups/
+db_backups/
+
+# OS generated
+*.tmp
