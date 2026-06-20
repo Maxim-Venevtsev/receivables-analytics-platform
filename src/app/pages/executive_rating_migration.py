@@ -9,6 +9,7 @@ from sqlalchemy import create_engine, text
 
 from src.app.components.navigation import top_navigation
 from src.app.components.kpi_cards import money
+from src.app.components.rating_stars import rating_stars_html
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -36,7 +37,84 @@ def compact_kpi(title: str, value: str, subtitle: str = "", color_class: str = "
 def rating_label(value) -> str:
     if pd.isna(value):
         return "—"
-    return f"{int(value)}★"
+    return f"{float(value):.1f}"
+
+
+def rating_html(value) -> str:
+    if pd.isna(value):
+        return "—"
+    stars = max(1, min(5, int(round(float(value)))))
+    return rating_stars_html(stars)
+
+
+def normalized_migration_status(value) -> str:
+    if pd.isna(value):
+        return ""
+    return str(value).upper()
+
+
+def period_days_for_label(period_label: str) -> int | None:
+    if period_label == "Все":
+        return None
+    return int(period_label.split()[0])
+
+
+def credit_quality_migration_cte() -> str:
+    return """
+        WITH bounds AS (
+            SELECT
+                MIN(snapshot_date) AS min_snapshot_date,
+                MAX(snapshot_date) AS max_snapshot_date
+            FROM core.client_credit_quality_history
+        ),
+        period_bounds AS (
+            SELECT
+                :period_label AS period_label,
+                :period_days AS period_days,
+                CASE
+                    WHEN :period_days IS NULL THEN b.min_snapshot_date
+                    ELSE COALESCE(
+                        (
+                            SELECT MIN(h.snapshot_date)
+                            FROM core.client_credit_quality_history h
+                            WHERE h.snapshot_date >= b.max_snapshot_date - (:period_days * INTERVAL '1 day')
+                        ),
+                        b.min_snapshot_date
+                    )
+                END AS start_snapshot_date,
+                b.max_snapshot_date AS end_snapshot_date
+            FROM bounds b
+        ),
+        migration AS (
+            SELECT
+                pb.period_label,
+                pb.period_days,
+                pb.start_snapshot_date,
+                pb.end_snapshot_date,
+                e.client_id,
+                e.client_name,
+                e.client_group,
+                e.parent_org_id,
+                s.credit_quality_stars::numeric AS start_rating,
+                e.credit_quality_stars::numeric AS end_rating,
+                e.credit_quality_stars::numeric - s.credit_quality_stars::numeric AS rating_delta,
+                CASE
+                    WHEN s.credit_quality_stars IS NULL AND e.credit_quality_stars IS NOT NULL
+                        THEN 'new'
+                    WHEN e.credit_quality_stars::numeric - s.credit_quality_stars::numeric > 0.05
+                        THEN 'improved'
+                    WHEN e.credit_quality_stars::numeric - s.credit_quality_stars::numeric < -0.05
+                        THEN 'worsened'
+                    ELSE 'stable'
+                END AS migration_status
+            FROM period_bounds pb
+            JOIN core.client_credit_quality_history e
+                ON e.snapshot_date = pb.end_snapshot_date
+            LEFT JOIN core.client_credit_quality_history s
+                ON s.client_id = e.client_id
+               AND s.snapshot_date = pb.start_snapshot_date
+        )
+    """
 
 
 @ui.page("/executive/rating-migration")
@@ -59,34 +137,67 @@ def executive_rating_migration_page(request: Request):
     content = ui.column().classes("w-full")
 
     def load_summary(period_label: str) -> pd.DataFrame:
-        return query_df("""
-            SELECT *
-            FROM core.v_executive_rating_migration_summary
-            WHERE period_label = :period_label
-        """, {"period_label": period_label})
+        return query_df(
+            credit_quality_migration_cte()
+            + """
+            SELECT
+                period_label,
+                period_days,
+                start_snapshot_date,
+                end_snapshot_date,
+                COUNT(*) FILTER (WHERE migration_status = 'improved') AS upgraded_clients,
+                COUNT(*) FILTER (WHERE migration_status = 'worsened') AS downgraded_clients,
+                COUNT(*) FILTER (WHERE migration_status = 'new') AS new_clients,
+                COUNT(*) FILTER (WHERE migration_status = 'stable') AS unchanged_clients,
+                COUNT(*) FILTER (WHERE migration_status = 'improved')
+                    - COUNT(*) FILTER (WHERE migration_status = 'worsened') AS net_migration_clients
+            FROM migration
+            GROUP BY
+                period_label,
+                period_days,
+                start_snapshot_date,
+                end_snapshot_date
+            """,
+            {
+                "period_label": period_label,
+                "period_days": period_days_for_label(period_label),
+            },
+        )
 
     def load_clients(period_label: str) -> pd.DataFrame:
-        return query_df("""
+        return query_df(
+            credit_quality_migration_cte()
+            + """
             SELECT *
-            FROM core.v_executive_rating_migration_clients
-            WHERE period_label = :period_label
-              AND migration_status IN ('UPGRADED', 'DOWNGRADED')
+            FROM migration
+            WHERE migration_status IN ('improved', 'worsened')
             ORDER BY rating_delta ASC NULLS LAST, client_name
-        """, {"period_label": period_label})
+            """,
+            {
+                "period_label": period_label,
+                "period_days": period_days_for_label(period_label),
+            },
+        )
 
     def prepare_rows(df: pd.DataFrame):
         dff = df.copy()
 
-        dff["start_rating_fmt"] = dff["start_stars"].apply(rating_label)
-        dff["end_rating_fmt"] = dff["end_stars"].apply(rating_label)
+        dff["start_rating_fmt"] = dff["start_rating"].apply(rating_label)
+        dff["end_rating_fmt"] = dff["end_rating"].apply(rating_label)
+        dff["start_rating_html"] = dff["start_rating"].apply(rating_html)
+        dff["end_rating_html"] = dff["end_rating"].apply(rating_html)
 
         dff["rating_delta_fmt"] = dff["rating_delta"].apply(
-            lambda value: "—" if pd.isna(value) else f"{int(value):+d}"
+            lambda value: "—" if pd.isna(value) else f"{float(value):+.1f}"
         )
 
-        dff["status_fmt"] = dff["migration_status"].map({
+        dff["migration_status_normalized"] = dff["migration_status"].apply(normalized_migration_status)
+
+        dff["status_fmt"] = dff["migration_status_normalized"].map({
             "UPGRADED": "Повысился",
+            "IMPROVED": "Повысился",
             "DOWNGRADED": "Понизился",
+            "WORSENED": "Понизился",
         }).fillna(dff["migration_status"])
 
         return dff.to_dict("records")
@@ -139,7 +250,7 @@ def executive_rating_migration_page(request: Request):
                     "text-blue-600",
                 )
 
-            ui.label("Клиенты с изменившимся рейтингом").classes("text-xl font-bold mb-2")
+            ui.label("Контрагенты с изменившимся рейтингом").classes("text-xl font-bold mb-2")
 
             if clients.empty:
                 ui.label("За выбранный период изменений рейтинга нет.").classes("text-gray-500")
@@ -147,8 +258,8 @@ def executive_rating_migration_page(request: Request):
 
             table = ui.table(
                 columns=[
-                    {"name": "client_name", "label": "Клиент", "field": "client_name", "sortable": True, "align": "left"},
                     {"name": "client_group", "label": "Филиал", "field": "client_group", "sortable": True},
+                    {"name": "client_name", "label": "Наименование", "field": "client_name", "sortable": True, "align": "left"},
                     {"name": "start_rating_fmt", "label": "Было", "field": "start_rating_fmt", "align": "center"},
                     {"name": "end_rating_fmt", "label": "Стало", "field": "end_rating_fmt", "align": "center"},
                     {"name": "rating_delta", "label": "Δ", "field": "rating_delta", "align": "center", "sortable": True},
@@ -171,6 +282,24 @@ def executive_rating_migration_page(request: Request):
             )
 
             table.add_slot(
+                "body-cell-start_rating_fmt",
+                """
+                <q-td :props="props" class="text-center">
+                    <span v-html="props.row.start_rating_html"></span>
+                </q-td>
+                """,
+            )
+
+            table.add_slot(
+                "body-cell-end_rating_fmt",
+                """
+                <q-td :props="props" class="text-center">
+                    <span v-html="props.row.end_rating_html"></span>
+                </q-td>
+                """,
+            )
+
+            table.add_slot(
                 "body-cell-rating_delta",
                 """
                 <q-td :props="props" class="text-center">
@@ -187,7 +316,7 @@ def executive_rating_migration_page(request: Request):
                 """
                 <q-td :props="props" class="text-center">
                     <q-badge
-                        :color="props.row.migration_status === 'UPGRADED' ? 'green' : 'red'"
+                        :color="['UPGRADED', 'IMPROVED'].includes(props.row.migration_status_normalized) ? 'green' : 'red'"
                         :label="props.row.status_fmt"
                     />
                 </q-td>

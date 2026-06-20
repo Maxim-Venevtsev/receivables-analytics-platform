@@ -53,9 +53,18 @@ def safe_move(source_path: Path, target_dir: Path) -> Path:
     shutil.move(str(source_path), str(target_path))
     return target_path
 
-def insert_client_rating_snapshot():
-    sql_path = PROJECT_ROOT / "sql" / "dml" / "insert_client_rating_snapshot.sql"
+def sort_files_by_report_date(files: list[Path]) -> list[Path]:
+    def sort_key(path: Path):
+        try:
+            _, metadata = parse_receivables_txt(path)
+            return (metadata["report_generated_date"] is None, metadata["report_generated_date"], path.name)
+        except Exception:
+            return (True, None, path.name)
 
+    return sorted(files, key=sort_key)
+
+
+def execute_sql_file(sql_path: Path):
     if not sql_path.exists():
         raise FileNotFoundError(f"SQL file not found: {sql_path}")
 
@@ -66,12 +75,19 @@ def insert_client_rating_snapshot():
     with engine.begin() as conn:
         conn.execute(text(sql))
 
+
+def insert_history_snapshots():
+    execute_sql_file(PROJECT_ROOT / "sql" / "dml" / "insert_client_rating_snapshot.sql")
     print("Client rating snapshot inserted")
+
+    execute_sql_file(PROJECT_ROOT / "sql" / "dml" / "insert_client_credit_quality_snapshot.sql")
+    print("Client Credit Quality snapshot inserted")
+
 
 def main():
     ensure_dirs()
 
-    files = sorted(RAW_DIR.glob("*.txt"))
+    files = sort_files_by_report_date(list(RAW_DIR.glob("*.txt")))
 
     if not files:
         print(f"No TXT files found in {RAW_DIR}")
@@ -105,6 +121,9 @@ def main():
 
             load_receivables_snapshot(df, metadata, path)
 
+            print("Updating rating history snapshots...")
+            insert_history_snapshots()
+
             archived_path = safe_move(path, ARCHIVE_DIR)
 
             print(f"SUCCESS: {path.name}")
@@ -121,11 +140,7 @@ def main():
 
             failed_count += 1
 
-    if loaded_count > 0:
-        print("-" * 60)
-        print("Updating client rating history...")
-        insert_client_rating_snapshot()
-    else:
+    if loaded_count == 0:
         print("-" * 60)
         print("No new files loaded; rating history was not updated")
 

@@ -33,9 +33,9 @@ SELECT
         WHEN p.period_days IS NULL THEN d.min_snapshot_date
         ELSE COALESCE(
             (
-                SELECT MAX(h.snapshot_date)
+                SELECT MIN(h.snapshot_date)
                 FROM core.client_rating_history h
-                WHERE h.snapshot_date <= d.max_snapshot_date - (p.period_days || ' days')::interval
+                WHERE h.snapshot_date >= d.max_snapshot_date - (p.period_days || ' days')::interval
             ),
             d.min_snapshot_date
         )

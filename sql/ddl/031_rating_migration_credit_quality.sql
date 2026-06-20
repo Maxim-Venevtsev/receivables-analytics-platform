@@ -95,6 +95,26 @@ bounds AS (
         MAX(snapshot_date) AS max_snapshot_date
     FROM core.client_credit_quality_history
 ),
+period_bounds AS (
+    SELECT
+        p.period_label,
+        p.period_days,
+        p.sort_order,
+        CASE
+            WHEN p.period_days IS NULL THEN b.min_snapshot_date
+            ELSE COALESCE(
+                (
+                    SELECT MIN(h.snapshot_date)
+                    FROM core.client_credit_quality_history h
+                    WHERE h.snapshot_date >= b.max_snapshot_date - p.period_days
+                ),
+                b.min_snapshot_date
+            )
+        END AS start_snapshot_date,
+        b.max_snapshot_date AS end_snapshot_date
+    FROM periods p
+    CROSS JOIN bounds b
+),
 client_universe AS (
     SELECT DISTINCT client_id
     FROM core.client_credit_quality_history
@@ -105,8 +125,8 @@ migration AS (
         p.period_days,
         p.sort_order,
 
-        start_h.snapshot_date AS start_snapshot_date,
-        end_h.snapshot_date AS end_snapshot_date,
+        p.start_snapshot_date,
+        p.end_snapshot_date,
 
         end_h.client_id,
         end_h.client_name,
@@ -124,37 +144,21 @@ migration AS (
 
         end_h.credit_quality_stars - start_h.credit_quality_stars AS rating_delta
 
-    FROM periods p
-    CROSS JOIN bounds b
+    FROM period_bounds p
     CROSS JOIN client_universe u
 
     JOIN LATERAL (
         SELECT h.*
         FROM core.client_credit_quality_history h
         WHERE h.client_id = u.client_id
-          AND h.snapshot_date <= b.max_snapshot_date
+          AND h.snapshot_date <= p.end_snapshot_date
         ORDER BY h.snapshot_date DESC
         LIMIT 1
     ) end_h ON TRUE
 
-    JOIN LATERAL (
-        SELECT h.*
-        FROM core.client_credit_quality_history h
-        WHERE h.client_id = u.client_id
-          AND h.snapshot_date <= b.max_snapshot_date
-        ORDER BY
-            CASE
-                WHEN h.snapshot_date <= CASE
-                    WHEN p.period_days IS NULL
-                        THEN b.min_snapshot_date
-                    ELSE b.max_snapshot_date - p.period_days
-                END
-                THEN 0
-                ELSE 1
-            END,
-            h.snapshot_date DESC
-        LIMIT 1
-    ) start_h ON TRUE
+    LEFT JOIN core.client_credit_quality_history start_h
+        ON start_h.client_id = u.client_id
+       AND start_h.snapshot_date = p.start_snapshot_date
 )
 SELECT
     *,
