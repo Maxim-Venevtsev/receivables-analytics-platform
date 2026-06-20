@@ -125,6 +125,13 @@ def parse_receivables_txt(path: Path) -> tuple[pd.DataFrame, dict]:
     df["overdue_amount_rub"] = df["overdue_amount_rub"].apply(parse_russian_number)
     df["overdue_amount_eur"] = df["overdue_amount_eur"].apply(parse_russian_number)
 
+    # CRM reports are generated with an artificial debt as-of date far in the
+    # future. In that export mode, "Просрочено, руб" contains the actual
+    # remaining balance, while "Сумма накладной" is the original invoice amount.
+    # Downstream views use invoice_amount as current debt, so map it from the
+    # overdue-rubles column rather than from the original invoice amount column.
+    df["invoice_amount"] = df["overdue_amount_rub"]
+
     df["days_overdue_report_param"] = pd.to_numeric(
         df["days_overdue_report_param"],
         errors="coerce"
