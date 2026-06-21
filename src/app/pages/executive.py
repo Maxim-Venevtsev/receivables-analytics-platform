@@ -13,6 +13,7 @@ from src.app.components.charts import (
     build_portfolio_debt_structure_chart,
     build_debt_quality_chart,
     build_green_debt_maturity_chart,
+    build_weighted_debt_age_chart,
     build_weighted_payment_term_chart,
     build_long_green_exposure_chart,
     build_rating_exposure_chart,
@@ -241,6 +242,12 @@ def executive_overview_page():
         ORDER BY report_generated_date, maturity_bucket
     """)
 
+    debt_age_history = query_df("""
+        SELECT *
+        FROM core.v_executive_weighted_debt_age_history
+        ORDER BY report_generated_date
+    """)
+
     payment_term_history = query_df("""
         SELECT *
         FROM core.v_executive_payment_term_history
@@ -401,6 +408,12 @@ def executive_overview_page():
         "Структура непросроченной задолженности по срокам отсрочки",
         "Показывает концентрацию непросроченного долга в коротких и длинных отсрочках.",
         build_green_debt_maturity_chart(maturity_history),
+    )
+
+    chart_card(
+        "Средневзвешенный возраст долга",
+        "Средний возраст открытой задолженности, взвешенный по сумме долга.",
+        build_weighted_debt_age_chart(debt_age_history),
     )
 
     chart_card(

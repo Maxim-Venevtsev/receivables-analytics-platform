@@ -238,6 +238,35 @@ def build_weighted_payment_term_chart(history_df: pd.DataFrame) -> go.Figure:
     return chart
 
 
+def build_weighted_debt_age_chart(history_df: pd.DataFrame) -> go.Figure:
+    chart = go.Figure()
+
+    if history_df.empty:
+        return chart
+
+    chart.add_trace(go.Scatter(
+        x=history_df["report_generated_date"],
+        y=history_df["weighted_avg_debt_age_days"],
+        mode="lines",
+        name="Средневзвешенный возраст долга",
+        line=dict(color="#2563eb", width=4, shape="spline", smoothing=0.6),
+        hovertemplate="%{x|%d.%m.%Y}<br>%{y:.1f} дней<extra></extra>",
+    ))
+
+    chart.update_layout(
+        height=320,
+        margin=dict(l=20, r=20, t=40, b=20),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis=dict(title="", showgrid=False),
+        yaxis=dict(title="Дней", gridcolor="#e5e7eb", zeroline=False, rangemode="tozero"),
+        hovermode="x unified",
+    )
+
+    return chart
+
+
 def build_long_green_exposure_chart(history_df: pd.DataFrame) -> go.Figure:
     chart = go.Figure()
 
