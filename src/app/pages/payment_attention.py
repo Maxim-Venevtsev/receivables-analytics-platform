@@ -306,6 +306,8 @@ def payment_attention_page():
         show_search=True,
         from_route="payment-attention",
         visible_columns=PAYMENT_ATTENTION_CLIENT_COLUMNS,
+        default_sort_by="payment_attention_amount",
+        default_sort_descending=True,
     )
 
     def update_kpi_cards():

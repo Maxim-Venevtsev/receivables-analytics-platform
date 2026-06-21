@@ -278,36 +278,18 @@ def dashboard():
         if selected_branches:
             result = result[result["client_group"].isin(selected_branches)]
 
-        sort_cols = [
-            col for col in [
-                "operational_sort_order",
-                "overdue_debt",
-                "due_today",
-                "due_soon_only",
-                "payment_attention_amount",
-                "shifted_amount",
-            ]
-            if col in result.columns
-        ]
-
-        if sort_cols:
-            ascending = [True] + [False] * (len(sort_cols) - 1)
+        if "total_debt" in result.columns:
             result = result.sort_values(
-                by=sort_cols,
-                ascending=ascending,
+                by="total_debt",
+                ascending=False,
             )
 
         return result
 
     def filtered_branches() -> pd.DataFrame:
         return branches.sort_values(
-            by=[
-                "overdue_debt",
-                "shifted_amount",
-                "payment_attention_amount",
-                "total_debt",
-            ],
-            ascending=[False, False, False, False],
+            by="total_debt",
+            ascending=False,
         )
 
     def get_metrics() -> dict:
@@ -439,6 +421,8 @@ def dashboard():
         show_search=True,
         from_route="dashboard",
         visible_columns=DASHBOARD_CLIENT_COLUMNS,
+        default_sort_by="total_debt",
+        default_sort_descending=True,
     )
 
     def update_kpi_cards():

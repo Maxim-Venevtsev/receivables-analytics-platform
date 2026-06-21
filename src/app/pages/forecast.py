@@ -441,6 +441,8 @@ def render_forecast_page(mode: str):
         show_search=True,
         from_route="due-today" if is_today else "due-soon",
         visible_columns=client_columns,
+        default_sort_by=target_amount_col,
+        default_sort_descending=True,
     )
 
     def update_kpi_cards():

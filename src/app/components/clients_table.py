@@ -390,6 +390,7 @@ def _prepare_rows(
     *,
     search_value: str = "",
     from_route: str = "dashboard",
+    use_operational_sort: bool = True,
 ) -> list[dict]:
     df = clients.copy()
 
@@ -482,7 +483,7 @@ def _prepare_rows(
     if "operational_status" not in df.columns:
         df["operational_status"] = "NORMAL"
 
-    if "operational_sort_order" in df.columns:
+    if use_operational_sort and "operational_sort_order" in df.columns:
         df = df.sort_values(
             by=[
                 "operational_sort_order",
@@ -525,6 +526,9 @@ def render_clients_table(
     show_branch: bool = True,
     show_search: bool = False,
     from_route: str = "dashboard",
+    default_sort_by: str | None = None,
+    default_sort_descending: bool = True,
+    preserve_input_order: bool = False,
 ):
     if clients.empty:
         return None
@@ -541,6 +545,14 @@ def render_clients_table(
             placeholder="Поиск клиента по названию или коду..."
         ).props("clearable").classes("w-96 mb-3")
 
+    pagination = {"rowsPerPage": 20}
+
+    if default_sort_by is not None:
+        pagination.update({
+            "sortBy": default_sort_by,
+            "descending": default_sort_descending,
+        })
+
     table = ui.table(
         columns=_build_columns(
             visible_columns,
@@ -550,8 +562,9 @@ def render_clients_table(
             clients,
             search_value="",
             from_route=from_route,
+            use_operational_sort=default_sort_by is None and not preserve_input_order,
         ),
-        pagination={"rowsPerPage": 20},
+        pagination=pagination,
     ).classes("w-full mb-6")
 
     table.props('rows-per-page-options="[20, 50, 100]"')
@@ -679,6 +692,7 @@ def render_clients_table(
                 clients,
                 search_value=search_input.value or "",
                 from_route=from_route,
+                use_operational_sort=default_sort_by is None and not preserve_input_order,
             )
             table.update()
 
@@ -689,6 +703,7 @@ def render_clients_table(
             new_clients,
             search_value=search_input.value or "" if search_input is not None else "",
             from_route=from_route,
+            use_operational_sort=default_sort_by is None and not preserve_input_order,
         )
         table.update()
 

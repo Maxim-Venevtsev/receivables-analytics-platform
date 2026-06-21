@@ -297,6 +297,7 @@ def term_shifts_page():
         show_search=True,
         from_route="term-shifts",
         visible_columns=TERM_SHIFT_CLIENT_COLUMNS,
+        preserve_input_order=True,
     )
 
     def update_kpi_cards():
