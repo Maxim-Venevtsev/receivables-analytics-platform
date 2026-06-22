@@ -29,6 +29,7 @@ The model supports:
 - branch-level analytics;
 - base payment-discipline rating;
 - Credit Quality Rating V2;
+- complete historical Credit Quality snapshots;
 - rating migration analytics;
 - invoice lifecycle analytics;
 - term-shift detection;
@@ -71,6 +72,14 @@ Central invoice-level snapshot fact table.
 
 Each ERP export is loaded as a new snapshot. The same invoice can appear across multiple snapshot dates until it is paid, partially paid, written off, or disappears from the open receivables report.
 
+Important balance definition after the June 2026 data-integrity fix:
+
+- `invoice_amount` stores the current outstanding invoice balance used by operational and executive analytics;
+- this value is mapped from source column `Просрочено, руб` because the CRM export is generated with an artificial future as-of date and current remaining balances appear there;
+- source column `Сумма накладной` represents the original invoice amount and must not be used as the current debt balance.
+
+This correction is why rebuilt portfolio totals can differ from earlier releases even when the same snapshot dates and row counts are present.
+
 Typical dimensions:
 
 - `report_generated_date`
@@ -87,8 +96,8 @@ Typical dimensions:
 
 Typical measures:
 
-- `invoice_amount`
-- `overdue_amount_rub`
+- `invoice_amount` — current outstanding balance, sourced from `Просрочено, руб`;
+- `overdue_amount_rub` — normalized source outstanding-balance field retained for validation and audit;
 - `overdue_amount_eur`
 - `days_overdue_real`
 - `days_until_due_real`
@@ -120,10 +129,13 @@ Current flow:
 2. Parse and normalize ERP export structure.
 3. Load new files into PostgreSQL.
 4. Skip already loaded files.
-5. Move successfully processed files to archive directory.
-6. Move failed files to failed directory.
+5. Write base rating history and Credit Quality history for the successfully loaded snapshot.
+6. Move successfully processed files to archive directory.
+7. Move failed files to failed directory.
 
 Raw, archive and failed directories are environment-driven via `.env`.
+
+The June 2026 rebuild loaded archived reports one by one in chronological report-date order so natural history was preserved. The validated result contains 26 report snapshot dates and matching base-rating and Credit Quality history dates.
 
 ---
 
@@ -183,8 +195,21 @@ Purpose:
 - rating audit trail;
 - rating dynamics;
 - upgrade / downgrade detection;
-- rating migration analytics;
+- base rating migration analytics;
 - portfolio-quality aggregation.
+
+### `core.client_credit_quality_history`
+
+Stores daily snapshots of Credit Quality Rating V2 after each successful ingestion run.
+
+Purpose:
+
+- Credit Quality audit trail;
+- Credit Quality migration analytics;
+- branch / parent / client migration strips based on the same Credit Quality metric used by current cards;
+- historical executive portfolio quality analysis.
+
+After the June 2026 rebuild this table is complete for all available snapshot dates, matching `core.receivables_snapshot_fact.report_generated_date`.
 
 ---
 
@@ -347,6 +372,8 @@ Operational client queue.
 
 Invoice-level operational detail view.
 
+Current-state operational views read from the latest receivables snapshot only. Historical fact rows remain available for trend analytics, but operational pages must not aggregate across all historical snapshots.
+
 Used by:
 
 - Client Card;
@@ -479,6 +506,19 @@ Historical distribution of non-overdue debt by payment-term buckets:
 - `91–120`
 - `120+`
 
+### `core.v_executive_weighted_debt_age_history`
+
+Weighted average debt-age trend by snapshot date.
+
+Calculation:
+
+```sql
+SUM(invoice_amount * GREATEST(report_generated_date - invoice_date, 0))
+/ NULLIF(SUM(invoice_amount), 0)
+```
+
+Uses only positive open debt rows. This measures how old the currently open debt is from invoice date, weighted by current outstanding balance.
+
 ### `core.v_executive_payment_term_history`
 
 Weighted average payment-term trend.
@@ -598,6 +638,7 @@ Credit Quality V2 is currently integrated into:
 - Parent Organization Card;
 - Branch Card;
 - Executive Overview;
+- Executive Rating Migration;
 - Executive Branch Health;
 - Executive bubble charts.
 

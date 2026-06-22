@@ -9,6 +9,8 @@ Current primary pages:
 - Overdue
 - Due Today
 - Due Soon
+- Payment Attention
+- Term Shifts
 - Executive Overview
 - Executive drill-down pages
 - Client Card
@@ -22,7 +24,8 @@ Contains:
 - KPI cards;
 - branch filter;
 - aging / receivables structure;
-- operational client queue.
+- branch summary table sorted by total debt descending by default;
+- operational client queue sorted by total debt descending by default.
 
 ## Client Card
 
@@ -71,11 +74,13 @@ Recommended structure:
 1. Executive KPI cards.
 2. Portfolio verdict.
 3. Portfolio structure charts.
-4. Payment-term quality charts.
-5. Client quality chart.
-6. Rating migration analytics.
-7. Risk bubble charts.
-8. Management signals.
+4. Green debt maturity chart.
+5. Weighted debt age chart.
+6. Payment-term quality charts.
+7. Client quality chart.
+8. Rating migration analytics.
+9. Risk bubble charts.
+10. Management signals.
 
 ## Executive Branch Health
 
@@ -101,8 +106,8 @@ Detect clients that are still non-overdue but already require operational attent
 Main blocks:
 
 1. KPI cards.
-2. Branch table.
-3. Client table.
+2. Branch table sorted by window excess descending.
+3. Client table sorted by window excess descending.
 
 Key metrics:
 
@@ -120,8 +125,8 @@ Monitor invoices whose due dates were changed after issuance.
 Main blocks:
 
 1. KPI cards.
-2. Branch table.
-3. Client table.
+2. Branch table sorted by repeated shifts descending, then shifted amount descending.
+3. Client table sorted by repeated shifts descending, then shifted amount descending.
 
 Highlights:
 
@@ -129,3 +134,19 @@ Highlights:
 - shift count;
 - repeated shifts;
 - invoice-level drill-down.
+
+
+---
+
+## Default sorting standards
+
+Default sorting is part of the operational UX contract:
+
+- Dashboard branches: `total_debt` descending.
+- Dashboard clients: `total_debt` descending.
+- Due Today clients: `due_today` descending.
+- Due Soon clients: `due_soon_only` descending.
+- Payment Attention clients: `payment_attention_amount` descending.
+- Term Shifts clients: repeated shifts descending, then total shifted amount descending.
+
+Manual table sorting remains available after page load.

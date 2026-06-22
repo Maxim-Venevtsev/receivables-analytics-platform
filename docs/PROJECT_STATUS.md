@@ -14,7 +14,8 @@ The system now supports:
 - invoice-level analytics;
 - configurable base client rating;
 - Credit Quality Rating V2;
-- rating history and migration analytics;
+- complete historical Credit Quality tracking across the rebuilt snapshot history;
+- rating history and Credit Quality migration analytics;
 - parent-organization weighted Credit Quality portfolio rating;
 - branch weighted Credit Quality portfolio rating;
 - historical behavioral analytics;
@@ -23,6 +24,7 @@ The system now supports:
 - executive management signal drill-down pages;
 - green debt quality monitoring;
 - hidden-risk client detection;
+- weighted debt age analytics;
 - branch executive risk profile;
 - term-shift detection;
 - invoice lifecycle and recent paid invoice analytics.
@@ -31,7 +33,8 @@ Project timeline note:
 
 - project scaffold appeared around **20 April 2026**;
 - active product development accelerated around **20 May 2026**;
-- by June 2026 the product reached an advanced local MVP stage with Credit Quality V2 implemented across core analytical views and main UI layers.
+- by June 2026 the product reached an advanced local MVP stage with Credit Quality V2 implemented across core analytical views and main UI layers;
+- after the June 2026 data-integrity rebuild, local and online work environments were synchronized on the validated historical database.
 
 ---
 
@@ -157,7 +160,7 @@ Implemented:
 
 ### Executive Overview Dashboard
 
-Status: **READY LOCALLY — Credit Quality V2 integrated**
+Status: **READY — Credit Quality V2 integrated and synchronized online**
 
 Implemented:
 
@@ -168,6 +171,7 @@ Implemented:
 - debt structure by day;
 - reliable debt vs control-required debt;
 - green debt maturity structure;
+- weighted average debt-age trend;
 - weighted average payment-term trend;
 - long green exposure trend;
 - Credit Quality exposure chart;
@@ -223,7 +227,8 @@ The private work deployment is now live:
 - HTTPS: Let's Encrypt certificate for `work.maximvenevtsev.com`;
 - dashboard shows latest snapshot date from the database;
 - browser title is `Кофточки+`;
-- favicon is enabled.
+- favicon is enabled;
+- June 2026 validated local database was promoted to the online work stand after content-level debt-balance checks.
 
 The existing public demo remains available at `https://demo.maximvenevtsev.com` with anonymized/generated data.
 
@@ -239,7 +244,7 @@ Immediate stabilization tasks:
 
 ## Credit Quality Rating V2
 
-Status: **COMPLETED LOCALLY**
+Status: **COMPLETED AND HISTORICALLY REBUILT**
 
 Purpose:
 
@@ -266,6 +271,8 @@ Implemented:
 - Credit Quality weighted portfolio rating for parent organizations;
 - Credit Quality weighted portfolio rating for branches;
 - Credit Quality weighted portfolio rating in Executive Overview;
+- complete `client_credit_quality_history` snapshots for all rebuilt report dates;
+- Credit Quality migration analytics based on historical Credit Quality values;
 - Credit Quality-based executive bubble charts;
 - Credit Quality-based Executive Branch Health page.
 
@@ -299,7 +306,7 @@ Validated examples:
 
 ### Real-data work environment
 
-Status: **DEPLOYED AS PRIVATE PRODUCTION MVP V1**
+Status: **DEPLOYED AS PRIVATE PRODUCTION MVP V1 — DATA REBUILT AND SYNCHRONIZED**
 
 Implemented:
 
@@ -309,7 +316,10 @@ Implemented:
 - isolated raw work directory;
 - incremental ingestion workflow;
 - archive / failed-file workflow;
-- latest-snapshot operational views.
+- latest-snapshot operational views;
+- validated rebuild from archived reports;
+- corrected current-balance mapping from source column `Просрочено, руб`;
+- local and online work databases synchronized after validation.
 
 ### Base client payment discipline rating
 
@@ -437,13 +447,21 @@ Not yet implemented:
 
 ## Data status
 
-Current work environment uses real operational datasets loaded into a local work database.
+Current work environment uses real operational datasets loaded into both the local work database and the private online work database.
 
-Private work deployment now contains real snapshots in `receivables_work`.
+The June 2026 data-integrity rebuild corrected a critical ingestion mapping issue: `invoice_amount` now represents the current outstanding balance from source column `Просрочено, руб`, not the original invoice amount from `Сумма накладной`. This means partial payments are reflected correctly and portfolio totals may differ materially from earlier releases even when row counts and snapshot dates are unchanged.
+
+Validated rebuilt history:
+
+- 26 historical report snapshot dates;
+- complete `core.client_rating_history` across all rebuilt dates;
+- complete `core.client_credit_quality_history` across all rebuilt dates;
+- corrected rating and Credit Quality migration history;
+- synchronized local and online work environments.
 
 Current limitations:
 
-- historical depth is still limited;
+- historical depth is still limited to the available archived reports;
 - rating confidence and migration analytics will become stronger as daily snapshots accumulate;
 - real payment history is inferred from snapshot changes rather than imported from actual payment transactions.
 
@@ -464,13 +482,13 @@ Current build is suitable for:
 
 ## Recommended immediate next steps
 
-1. Add daily PostgreSQL backups for `receivables_work`.
-2. Perform and document a restore test.
+1. Add scheduled daily PostgreSQL backups for `receivables_work`.
+2. Perform and document a restore test using the June 2026 promotion backup as reference.
 3. Configure scheduled ETL/email ingestion.
 4. Rotate deployment and Basic Auth passwords.
 5. Optionally switch deployment access from HTTPS token to SSH deploy key.
 6. Continue daily snapshot accumulation.
-7. Validate Credit Quality V2 on real examples for 1–2 weeks.
+7. Monitor Credit Quality V2 migration output on real examples.
 8. Tune YAML thresholds based on observed false positives / false negatives.
 
 
@@ -489,6 +507,12 @@ Completed:
 - Contract payment-term outlier handling.
 - Recent paid invoice behavior analytics.
 - Correct date and numeric sorting across reusable tables.
+- Data-integrity rebuild using current outstanding balance from `Просрочено, руб`.
+- Complete base rating and Credit Quality history for all 26 rebuilt snapshots.
+- Credit Quality-based rating migration restored across the full rebuilt history.
+- Weighted debt age chart in Executive Overview.
+- Default sorting standardized on dashboard and operational client tables.
+- Online work stand synchronized with the validated local database.
 
 Current deployment target:
 

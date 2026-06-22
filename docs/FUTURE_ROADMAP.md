@@ -6,7 +6,8 @@ Project timeline note:
 
 - project initiated around **20 April 2026**;
 - active development started around **20 May 2026**;
-- Credit Quality Rating V2 was implemented in June 2026.
+- Credit Quality Rating V2 was implemented in June 2026;
+- the June 2026 data-integrity rebuild corrected current-balance mapping, restored full rating histories and synchronized the online work stand with the validated local database.
 
 ---
 
@@ -99,9 +100,9 @@ The base rating remains the foundation for Credit Quality V2 and rating migratio
 
 ---
 
-## 1.4 Rating Dynamics Layer
+## 1.4 Rating Dynamics and Migration Layer
 
-Status: **READY**
+Status: **READY — BASE AND CREDIT QUALITY HISTORY RESTORED**
 
 Implemented:
 
@@ -110,13 +111,14 @@ Implemented:
 - latest rating dynamics;
 - rating change event view;
 - rating migration drill-down page;
-- rating migration chart;
+- Credit Quality-based rating migration chart and table;
+- complete Credit Quality history across the rebuilt snapshot period;
 - client rating migration strip;
 - weighted parent and branch rating strips.
 
 Purpose:
 
-Track rating upgrades, downgrades, stable clients, and newly rated clients.
+Track base rating movement and Credit Quality movement for improved, worsened, stable and newly rated clients.
 
 Important note:
 
@@ -185,6 +187,7 @@ Implemented:
 - debt structure history;
 - reliable vs control-required debt;
 - green debt maturity chart;
+- weighted debt-age trend;
 - weighted payment-term trend;
 - long green exposure trend;
 - Credit Quality exposure chart;
@@ -237,7 +240,7 @@ Help management identify large exposures, hidden risk and portfolio concentratio
 
 ## 1.9 Credit Quality Rating V2
 
-Status: **COMPLETED LOCALLY / IN VALIDATION**
+Status: **COMPLETED, HISTORICALLY REBUILT AND DEPLOYED TO WORK STAND**
 
 Implemented:
 
@@ -256,7 +259,9 @@ Implemented:
 - branch weighted Credit Quality rating;
 - executive weighted portfolio Credit Quality rating;
 - Credit Quality-based bubble charts;
-- Credit Quality-based Executive Branch Health.
+- Credit Quality-based Executive Branch Health;
+- daily Credit Quality history snapshots;
+- Credit Quality migration analytics across the rebuilt history.
 
 Validation status:
 
@@ -271,6 +276,28 @@ Next validation actions:
 - compare model output with business intuition;
 - tune YAML thresholds;
 - record false positives and false negatives.
+
+---
+
+## 1.10 June 2026 Data Integrity and Analytics Release
+
+Status: **COMPLETED AND DEPLOYED TO WORK STAND**
+
+Implemented:
+
+- corrected current-balance mapping: `invoice_amount` now comes from source `Просрочено, руб`;
+- validated full historical rebuild from archived reports;
+- 26 historical report snapshot dates restored;
+- complete `client_rating_history` across all rebuilt dates;
+- complete `client_credit_quality_history` across all rebuilt dates;
+- Credit Quality migration analytics restored on historical Credit Quality data;
+- weighted debt age chart added to Executive Overview;
+- dashboard and operational client-table default sorting standardized;
+- validated local database promoted to the online work stand.
+
+Purpose:
+
+Ensure debt totals reflect current outstanding balances after partial payments and make rating migration analytics consistent with Credit Quality Rating V2.
 
 ---
 
@@ -326,30 +353,6 @@ Potential KPI:
 ```text
 Portfolio Credit Quality Score = weighted average Credit Quality Rating by current debt exposure
 ```
-
----
-
-## 2.3 Rating migration based on Credit Quality V2
-
-Status: **DESIGN NEEDED**
-
-Current migration analytics uses historical base rating snapshots.
-
-Potential next step:
-
-- store daily `credit_quality_stars` snapshots;
-- create Credit Quality migration matrix;
-- distinguish base rating migration from severity-driven migration;
-- detect early deterioration even before overdue debt appears.
-
-Important design question:
-
-Should Credit Quality migration replace base rating migration, or should both be shown separately?
-
-Recommended approach:
-
-- keep base rating migration as payment-discipline migration;
-- add Credit Quality migration as risk-quality migration.
 
 ---
 
@@ -944,10 +947,10 @@ Recommended next documentation updates:
 
 ## Next product cycle
 
-1. Credit Quality V2 historical snapshots.
-2. Credit Quality migration analytics.
-3. Branch-level green debt maturity visualization.
-4. Production operations dashboard.
+1. Branch-level green debt maturity visualization.
+2. Production operations dashboard.
+3. Data quality monitoring for source-report mapping and operational view freshness.
+4. Credit Quality threshold tuning based on post-rebuild observations.
 
 ## Later
 

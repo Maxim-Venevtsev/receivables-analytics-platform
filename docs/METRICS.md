@@ -8,6 +8,8 @@ This document describes the main business metrics used in Debt Management BI.
 
 Total open receivables amount in the current snapshot.
 
+After the June 2026 data-integrity fix this is based on current outstanding invoice balance, not original invoice amount. In source reports the current balance is taken from `Просрочено, руб`; `Сумма накладной` is treated as the original invoice amount and is not used for current debt analytics.
+
 ### Overdue debt
 
 Amount where the invoice is currently overdue according to real due date logic.
@@ -57,6 +59,15 @@ due_date - invoice_date
 ### Weighted average payment term
 
 Weighted by invoice amount or client total debt.
+
+### Weighted average debt age
+
+```text
+SUM(current_outstanding_balance * max(report_generated_date - invoice_date, 0))
+/ SUM(current_outstanding_balance)
+```
+
+Business meaning: average age of currently open debt, weighted by current outstanding balance. It complements weighted payment term by showing how old receivables are before or regardless of overdue status.
 
 ### Maximum payment term
 
@@ -132,18 +143,20 @@ Share of total debt concentrated in the 20 largest debtors.
 
 ## Migration metrics
 
-### Upgraded clients
+### Improved clients
 
-Clients whose rating improved between the beginning and end of the selected period.
+Clients whose Credit Quality rating improved between the beginning and end of the selected period.
 
-### Downgraded clients
+### Worsened clients
 
-Clients whose rating worsened between the beginning and end of the selected period.
+Clients whose Credit Quality rating worsened between the beginning and end of the selected period.
+
+Legacy status labels `UPGRADED` and `DOWNGRADED` may still appear in older base-rating views, but the current Executive Rating Migration page uses Credit Quality history and classifies changes as improved / worsened.
 
 ### Net migration
 
 ```text
-upgraded_clients - downgraded_clients
+improved_clients - worsened_clients
 ```
 
 
