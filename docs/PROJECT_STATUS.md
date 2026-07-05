@@ -28,6 +28,9 @@ The system now supports:
 - branch executive risk profile;
 - term-shift detection;
 - invoice lifecycle and recent paid invoice analytics.
+- Automation Layer: Mail Gateway and Orchestrator;
+- restart-safe processing from mailbox to raw ingestion directory;
+- backlog processing for both mail inbox and raw directory.
 
 Project timeline note:
 
@@ -236,9 +239,67 @@ Immediate stabilization tasks:
 
 - daily PostgreSQL backups;
 - restore test;
-- scheduled ETL/email ingestion;
+- VPS scheduling for the completed automation layer;
 - password rotation;
 - optional SSH deploy key instead of HTTPS token.
+
+---
+
+## Automation Layer — Mail Gateway and Orchestrator
+
+Status: **COMPLETED LOCALLY AND VALIDATED END TO END**
+
+Purpose:
+
+Create a safe automation layer before the existing ingestion pipeline without changing ingestion business logic.
+
+Implemented architecture:
+
+```text
+Yahoo Mail
+    ↓
+ARS Reports
+    ↓
+Mail Gateway
+    ↓
+mail_inbox
+    ↓
+Orchestrator
+    ↓
+raw_work
+    ↓
+Existing ingestion pipeline
+    ↓
+archive_work / failed_work
+    ↓
+PostgreSQL
+    ↓
+Dashboard
+```
+
+Completed:
+
+- Mail Gateway standalone pre-ingestion layer;
+- Yahoo IMAP authentication through App Password;
+- configurable source / processed / failed mailbox folders;
+- sender whitelist;
+- attachment extension whitelist;
+- SHA256 duplicate detection;
+- manifest-based idempotency;
+- structured JSONL logging;
+- dry-run mode;
+- processed / failed routing;
+- backlog-safe processing of existing inbox files;
+- restart-safe Orchestrator;
+- safe handoff from `MAIL_INBOX_DIR` to raw ingestion directory;
+- RAW directory treated as the source of truth for ingestion execution;
+- existing ingestion triggered only when eligible raw files exist;
+- support for `--dry-run`, `--skip-mail`, `--skip-ingestion` and `--limit`;
+- end-to-end automated local pipeline successfully validated.
+
+Important boundary:
+
+The Automation Layer does not modify parsing, mapping, rating, SQL views or existing ingestion business logic.
 
 ---
 
@@ -416,7 +477,15 @@ Implemented:
 ## Current architecture
 
 ```text
-TXT / Excel
+Yahoo Mail / TXT / Excel
+    ↓
+Mail Gateway
+    ↓
+mail_inbox
+    ↓
+Orchestrator
+    ↓
+raw_work
     ↓
 Python ingestion
     ↓
@@ -434,7 +503,6 @@ NiceGUI operational frontend
 Not yet implemented:
 
 - role model;
-- scheduled ETL;
 - automated backups;
 - user action history;
 - comments/workflow tracking;
@@ -442,6 +510,8 @@ Not yet implemented:
 - real payment history integration;
 - credit limits;
 - credit policy action workflow.
+- VPS cron scheduling for the completed Automation Layer;
+- automation health checks and alerting.
 
 ---
 
@@ -484,7 +554,7 @@ Current build is suitable for:
 
 1. Add scheduled daily PostgreSQL backups for `receivables_work`.
 2. Perform and document a restore test using the June 2026 promotion backup as reference.
-3. Configure scheduled ETL/email ingestion.
+3. Deploy the completed Automation Layer to VPS and schedule it with cron/systemd timer.
 4. Rotate deployment and Basic Auth passwords.
 5. Optionally switch deployment access from HTTPS token to SSH deploy key.
 6. Continue daily snapshot accumulation.

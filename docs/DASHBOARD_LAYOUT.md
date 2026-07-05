@@ -22,10 +22,37 @@ Current primary pages:
 Contains:
 
 - KPI cards;
+- latest data snapshot line under the subtitle;
 - branch filter;
 - aging / receivables structure;
 - branch summary table sorted by total debt descending by default;
 - operational client queue sorted by total debt descending by default.
+
+Data freshness:
+
+- the dashboard displays the latest available database snapshot date;
+- the UI does not read mail or filesystem runtime directories directly;
+- automated Mail Gateway and Orchestrator runs update the raw ingestion flow before PostgreSQL views refresh.
+
+Automation context:
+
+```text
+Yahoo Mail
+    ↓
+Mail Gateway
+    ↓
+mail_inbox
+    ↓
+Orchestrator
+    ↓
+raw_work / RAW_DIR
+    ↓
+Existing ingestion
+    ↓
+PostgreSQL views
+    ↓
+Dashboard
+```
 
 ## Client Card
 

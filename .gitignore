@@ -21,6 +21,14 @@ data/raw_work/
 data/archive_work/
 data/failed_work/
 
+# mail gateway runtime files
+data/mail_inbox/
+data/mail_logs/
+data/mail_manifest*.json
+data/mail_gateway_manifest*.json
+data/automation_logs/
+data/orchestrator*.jsonl
+
 # demo dataset: allowed for GitHub
 !data/demo/
 !data/demo/**

@@ -2,6 +2,8 @@
 
 This document describes the main business metrics used in Debt Management BI.
 
+It also lists operational automation metrics used to monitor the Mail Gateway and Orchestrator. Automation metrics do not change business KPI definitions; they describe pipeline execution quality.
+
 ## Core receivables metrics
 
 ### Total debt
@@ -181,3 +183,53 @@ Inferred standard payment term based on stable historical behavior.
 ### Maximum payment term
 
 Maximum observed payment term, including extreme outliers.
+
+## Automation metrics
+
+Automation metrics are emitted by the Mail Gateway and Orchestrator logs and summaries.
+
+### Mail files written this run
+
+Number of validated attachments written by Mail Gateway into `MAIL_INBOX_DIR` during the current run.
+
+### Inbox files detected for handoff
+
+Number of eligible files found in `MAIL_INBOX_DIR` after Mail Gateway finishes.
+
+Eligible extensions:
+
+- `.txt`
+- `.xls`
+- `.xlsx`
+
+Manifest, JSONL, log, temp and lock files are ignored.
+
+### Files handed off
+
+Number of files safely copied from `MAIL_INBOX_DIR` to `AUTOMATION_RAW_DIR` with matching SHA256 verification and source removal after successful copy.
+
+### RAW files detected
+
+Number of eligible files present in `AUTOMATION_RAW_DIR` / `RAW_DIR` after handoff.
+
+This is the source-of-truth metric for deciding whether ingestion should run. It supports restart safety: if the orchestrator stops after handoff but before ingestion, the next run detects raw files and continues.
+
+### Ingestion executed
+
+Boolean operational flag showing whether the existing ingestion entrypoint was executed.
+
+### Ingestion skipped
+
+Boolean operational flag showing whether ingestion was skipped.
+
+Expected skip reasons:
+
+- `empty raw`
+- `--skip-ingestion`
+- `dry_run`
+
+### Duplicate attachments
+
+Number of Mail Gateway attachments skipped because their SHA256 hash already exists in the manifest.
+
+Duplicate detection is content-based, not filename-based.

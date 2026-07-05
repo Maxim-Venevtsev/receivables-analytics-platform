@@ -342,7 +342,29 @@ DB_USER=receivables_user
 DB_PASSWORD=<stored on server only>
 
 APP_ENV=work
+
+RAW_DIR=/home/deploy/receivables-work-data/raw
+ARCHIVE_DIR=/home/deploy/receivables-work-data/archive
+FAILED_DIR=/home/deploy/receivables-work-data/failed
+
+YAHOO_IMAP_HOST=imap.mail.yahoo.com
+YAHOO_IMAP_PORT=993
+YAHOO_IMAP_USER=<mailbox stored on server only>
+YAHOO_IMAP_PASSWORD=<Yahoo App Password stored on server only>
+MAIL_SOURCE_FOLDER=ARS Reports
+MAIL_PROCESSED_FOLDER=ARS Processed
+MAIL_FAILED_FOLDER=ARS Failed
+MAIL_ALLOWED_SENDERS=tatiana.mironova@paintgroup.ru
+MAIL_ALLOWED_EXTENSIONS=.txt,.xls,.xlsx
+MAIL_INBOX_DIR=/home/deploy/receivables-work-data/mail_inbox
+MAIL_MANIFEST_PATH=/home/deploy/receivables-work-data/mail_manifest.json
+MAIL_LOG_PATH=/home/deploy/receivables-work-data/logs/mail_gateway.jsonl
+
+AUTOMATION_RAW_DIR=/home/deploy/receivables-work-data/raw
+AUTOMATION_LOG_PATH=/home/deploy/receivables-work-data/logs/orchestrator.jsonl
 ```
+
+Yahoo authentication requires an App Password. Do not use or document the real mailbox password.
 
 ---
 
@@ -614,6 +636,8 @@ Real work data directories:
 /home/deploy/receivables-work-data/raw
 /home/deploy/receivables-work-data/archive
 /home/deploy/receivables-work-data/failed
+/home/deploy/receivables-work-data/mail_inbox
+/home/deploy/receivables-work-data/logs
 ```
 
 Rules:
@@ -621,6 +645,8 @@ Rules:
 - real ERP exports must not be committed to GitHub;
 - raw files should be moved to `archive` after successful ingestion;
 - failed files should be isolated in `failed`;
+- Mail Gateway writes validated attachments into `mail_inbox`;
+- Orchestrator hands eligible `mail_inbox` files into `raw`;
 - do not include real client names in documentation.
 
 Recommended ignored paths:
@@ -632,6 +658,103 @@ data/work/
 data/staging/
 data/logs/
 ```
+
+---
+
+# Automation Layer deployment
+
+## Processing pipeline
+
+```text
+Yahoo Mail
+    ↓
+ARS Reports
+    ↓
+Mail Gateway
+    ↓
+mail_inbox
+    ↓
+Orchestrator
+    ↓
+raw_work
+    ↓
+Existing ingestion pipeline
+    ↓
+archive_work / failed_work
+    ↓
+PostgreSQL
+    ↓
+Dashboard
+```
+
+Responsibilities:
+
+- Yahoo Mail stores incoming ARS report emails.
+- `ARS Reports` is the mailbox folder scanned by Mail Gateway.
+- Mail Gateway authenticates via Yahoo IMAP App Password, validates sender and attachment extension, computes SHA256, skips duplicates using its manifest, writes accepted files into `MAIL_INBOX_DIR`, logs JSONL events and routes messages to processed or failed folders.
+- `mail_inbox` is the pre-ingestion staging directory and supports backlog processing after restarts.
+- Orchestrator optionally runs Mail Gateway, scans `MAIL_INBOX_DIR`, safely hands eligible files into `AUTOMATION_RAW_DIR`, scans raw and runs existing ingestion only when eligible raw files exist.
+- `raw_work` / `RAW_DIR` is the source of truth for ingestion execution.
+- Existing ingestion parses, loads, archives and fails files according to its current business logic.
+- PostgreSQL and the dashboard are updated only through the existing ingestion and SQL view layers.
+
+Mail Gateway and Orchestrator do not modify parsing, mapping, rating or SQL business logic.
+
+## Recommended deployment order
+
+1. Deploy code.
+2. Create runtime directories.
+3. Configure `.env`.
+4. Dry-run Mail Gateway.
+5. Dry-run Orchestrator.
+6. Run one real execution.
+7. Add cron or systemd timer scheduling.
+
+Create runtime directories:
+
+```bash
+mkdir -p /home/deploy/receivables-work-data/raw
+mkdir -p /home/deploy/receivables-work-data/archive
+mkdir -p /home/deploy/receivables-work-data/failed
+mkdir -p /home/deploy/receivables-work-data/mail_inbox
+mkdir -p /home/deploy/receivables-work-data/logs
+```
+
+Dry-run Mail Gateway:
+
+```bash
+cd /home/deploy/receivables-work
+source .venv/bin/activate
+python -m src.automation.mail_gateway.cli --dry-run --limit 5
+```
+
+Dry-run Orchestrator:
+
+```bash
+cd /home/deploy/receivables-work
+source .venv/bin/activate
+python -m src.automation.orchestrator.cli --dry-run --limit 5
+```
+
+Handoff-only test without ingestion:
+
+```bash
+python -m src.automation.orchestrator.cli --skip-mail --skip-ingestion --limit 1
+```
+
+Real one-message execution:
+
+```bash
+python -m src.automation.orchestrator.cli --limit 1
+```
+
+Future cron example:
+
+```cron
+15 7 * * * cd /home/deploy/receivables-work && . .venv/bin/activate && python -m src.automation.orchestrator.cli >> /home/deploy/receivables-work-data/logs/orchestrator.cron.log 2>&1
+```
+
+Review cron timing with the business report delivery schedule before enabling.
 
 ---
 
@@ -774,6 +897,9 @@ Completed:
 - [x] Create post-deploy config backups.
 - [x] Add work UI hardening: latest snapshot date, browser title and favicon.
 - [x] Tag release as `work-deploy-v1`.
+- [x] Implement Mail Gateway.
+- [x] Implement Orchestrator.
+- [x] Validate end-to-end automation locally.
 
 ---
 
@@ -781,8 +907,9 @@ Completed:
 
 1. Add daily PostgreSQL backups for `receivables_work`.
 2. Perform and document a restore test.
-3. Schedule ETL/email ingestion.
-4. Rotate deployment and Basic Auth passwords.
-5. Optionally replace HTTPS-token deploy access with an SSH deploy key.
-6. Add ETL run logging and failure visibility.
-7. Review backup retention and raw-file retention policy.
+3. Deploy Automation Layer configuration to VPS.
+4. Enable cron or systemd timer scheduling after dry-run validation.
+5. Rotate deployment and Basic Auth passwords.
+6. Optionally replace HTTPS-token deploy access with an SSH deploy key.
+7. Add automation health checks, monitoring and alerting.
+8. Review backup retention and raw-file retention policy.

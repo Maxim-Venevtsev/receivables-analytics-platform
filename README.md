@@ -65,11 +65,13 @@ The system provides both:
 
 ```mermaid
 flowchart TD
-    A[ERP Export TXT/XLS]
-    --> B[Python Ingestion Pipeline]
-    --> C[PostgreSQL Warehouse]
-    --> D[SQL Analytical Views]
-    --> E[NiceGUI Dashboards]
+    A[Operational report email / ERP export]
+    --> B[Mail Gateway]
+    --> C[Automation Orchestrator]
+    --> D[Python Ingestion Pipeline]
+    --> E[PostgreSQL Warehouse]
+    --> F[SQL Analytical Views]
+    --> G[NiceGUI Dashboards]
 ```
 
 ---
@@ -78,6 +80,8 @@ flowchart TD
 
 ## Data ingestion
 - Source: Axapta-generated TXT / Excel reports
+- Automated Mail Gateway for report attachment pickup
+- Automation Orchestrator for safe handoff into ingestion
 - Python parsing and normalization
 - Validation and transformation layer
 - Snapshot-based storage
@@ -173,6 +177,9 @@ Reusable frontend components:
 - green debt maturity monitoring
 - hidden-risk client detection
 - branch risk profile analysis
+- automated Mail Gateway
+- automated ingestion orchestration
+- end-to-end automated data pipeline
 
 ---
 
@@ -566,6 +573,8 @@ This project was designed not as a static dashboard, but as a production-style o
 Key engineering tasks included:
 
 - parsing and normalizing inconsistent ERP TXT/XLS exports
+- creating a safe pre-ingestion Mail Gateway
+- orchestrating restart-safe file handoff into the ingestion raw directory
 - building reusable PostgreSQL analytical views
 - implementing hierarchical parent-organization aggregation
 - creating drill-down analytical workflows
@@ -620,14 +629,15 @@ Current version is an operational MVP intended for:
 - workflow validation
 - business feedback
 - architecture demonstration
+- end-to-end automated data pipeline validation
 
 Production hardening still planned:
 
 - authentication
-- scheduled ETL
 - backup strategy
 - deployment automation
 - user management
+- production monitoring and alerting
 
 ---
 

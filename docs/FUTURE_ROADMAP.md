@@ -8,6 +8,7 @@ Project timeline note:
 - active development started around **20 May 2026**;
 - Credit Quality Rating V2 was implemented in June 2026;
 - the June 2026 data-integrity rebuild corrected current-balance mapping, restored full rating histories and synchronized the online work stand with the validated local database.
+- the Automation Layer, including Mail Gateway and Orchestrator, has been completed and validated locally.
 
 ---
 
@@ -301,6 +302,30 @@ Ensure debt totals reflect current outstanding balances after partial payments a
 
 ---
 
+## 1.11 Automation Layer
+
+Status: **COMPLETED LOCALLY**
+
+Implemented:
+
+- standalone Mail Gateway;
+- Yahoo IMAP App Password authentication;
+- sender and attachment extension validation;
+- SHA256 duplicate detection and manifest;
+- structured JSONL logging;
+- dry-run mode;
+- processed / failed mailbox routing;
+- backlog-safe inbox processing;
+- restart-safe Orchestrator;
+- safe handoff from `MAIL_INBOX_DIR` to ingestion raw directory;
+- RAW directory used as the source of truth before ingestion;
+- support for `--dry-run`, `--skip-mail`, `--skip-ingestion` and `--limit`;
+- local end-to-end automated pipeline validation.
+
+Remaining work is deployment and operations hardening, not implementation of the automation layer itself.
+
+---
+
 # 2. In validation / tune next
 
 ## 2.1 Credit Quality V2 threshold tuning
@@ -370,7 +395,8 @@ Scope:
 
 - daily PostgreSQL backups;
 - restore test;
-- scheduled ETL/email ingestion;
+- VPS deployment of the completed Automation Layer;
+- cron or systemd timer scheduling;
 - password rotation;
 - optional SSH deploy key instead of HTTPS token;
 - backup logs;
@@ -378,24 +404,22 @@ Scope:
 
 ---
 
-## 3.2 Scheduled ETL
+## 3.2 Scheduled automation
 
 Status: **IMMEDIATE STABILIZATION TASK**
 
 Goal:
 
-Automate daily ingestion for the private work environment.
+Schedule and monitor the completed automation pipeline in the private work environment.
 
 Planned capabilities:
 
-- scheduled file pickup;
-- email/report ingestion workflow;
+- cron or systemd timer execution;
+- automatic online ingestion;
 - ingestion run logging;
 - failure notifications;
-- archive / failed folder management;
-- automatic rating snapshot update;
-- automatic Credit Quality refresh;
-- dashboard refresh after ingestion.
+- archive / failed folder monitoring;
+- dashboard freshness monitoring after ingestion.
 
 ---
 
@@ -938,12 +962,14 @@ Recommended next documentation updates:
 
 1. Add daily PostgreSQL backups for `receivables_work`.
 2. Perform and document a restore test.
-3. Configure scheduled ETL/email ingestion.
-4. Rotate deployment and Basic Auth passwords.
-5. Optionally switch deployment access from HTTPS token to SSH deploy key.
-6. Continue daily snapshot accumulation.
-7. Monitor Credit Quality V2 outputs on real clients.
-8. Tune YAML thresholds after 1–2 weeks of observation.
+3. Deploy the completed Automation Layer to VPS.
+4. Add cron or systemd timer scheduling.
+5. Add email monitoring, health checks and alerting.
+6. Rotate deployment and Basic Auth passwords.
+7. Optionally switch deployment access from HTTPS token to SSH deploy key.
+8. Continue daily snapshot accumulation.
+9. Monitor Credit Quality V2 outputs on real clients.
+10. Tune YAML thresholds after 1–2 weeks of observation.
 
 ## Next product cycle
 
@@ -977,7 +1003,8 @@ Completed:
 Remaining production stabilization:
 
 - backup procedures;
-- automated ingestion;
+- cron scheduling for the completed Automation Layer;
+- automatic online ingestion operations;
 - restore testing;
 - production monitoring.
 

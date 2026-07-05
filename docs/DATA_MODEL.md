@@ -9,7 +9,15 @@ This document describes the analytical data model of the Debt Management BI plat
 The platform follows a snapshot-based analytical model:
 
 ```text
-ERP TXT / Excel export
+Yahoo Mail / ERP TXT / Excel export
+    ↓
+Mail Gateway
+    ↓
+mail_inbox
+    ↓
+Orchestrator
+    ↓
+raw_work / RAW_DIR
     ↓
 Python ingestion
     ↓
@@ -36,6 +44,8 @@ The model supports:
 - executive-level portfolio risk monitoring;
 - green debt quality analytics;
 - hidden-risk detection.
+- automated pre-ingestion mail processing;
+- restart-safe orchestration before ingestion.
 
 ---
 
@@ -121,6 +131,16 @@ Derived analytical fields:
 
 ## Ingestion control
 
+The Automation Layer operates before ingestion and does not modify database loading logic, parsing rules, rating rules, SQL views or schema behavior.
+
+Automation flow:
+
+1. Mail Gateway downloads validated report attachments from Yahoo Mail into `MAIL_INBOX_DIR`.
+2. Orchestrator scans `MAIL_INBOX_DIR` for eligible backlog files.
+3. Orchestrator safely hands files off to `AUTOMATION_RAW_DIR` / `RAW_DIR`.
+4. Orchestrator scans the raw directory and runs existing ingestion only when eligible raw files exist.
+5. Existing ingestion moves successful files to archive and failed files to failed.
+
 The ingestion workflow is designed to avoid duplicate loads.
 
 Current flow:
@@ -136,6 +156,23 @@ Current flow:
 Raw, archive and failed directories are environment-driven via `.env`.
 
 The June 2026 rebuild loaded archived reports one by one in chronological report-date order so natural history was preserved. The validated result contains 26 report snapshot dates and matching base-rating and Credit Quality history dates.
+
+### Automation runtime directories
+
+Runtime directories used by the Automation Layer:
+
+- `MAIL_INBOX_DIR` — staging directory for validated attachments saved by Mail Gateway;
+- `AUTOMATION_RAW_DIR` — raw handoff target used by Orchestrator;
+- `RAW_DIR` — raw directory read by existing ingestion;
+- `ARCHIVE_DIR` — directory where existing ingestion moves successful files;
+- `FAILED_DIR` — directory where existing ingestion moves failed files;
+- `MAIL_MANIFEST_PATH` — SHA256/message manifest for Mail Gateway duplicate detection;
+- `MAIL_LOG_PATH` — Mail Gateway JSONL log;
+- `AUTOMATION_LOG_PATH` — Orchestrator JSONL log.
+
+In the work environment, `AUTOMATION_RAW_DIR` and `RAW_DIR` should point to the same real raw directory. The raw directory is the source of truth for deciding whether ingestion should run, which makes the workflow restart-safe if a run stops after handoff but before ingestion.
+
+Mail Gateway and Orchestrator files are runtime artifacts and must not be committed.
 
 ---
 
