@@ -29,6 +29,13 @@ data/mail_gateway_manifest*.json
 data/automation_logs/
 data/orchestrator*.jsonl
 
+# local sync runtime files
+data/local_sync_inbox/
+data/local_sync_logs/
+data/local_sync_manifest*.json
+data/local_sync_manifest*.bak
+data/local_sync_manifest*.lock
+
 # demo dataset: allowed for GitHub
 !data/demo/
 !data/demo/**
