@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import posixpath
-import re
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -35,34 +34,35 @@ class OpenSftpRemoteClient:
         for line in output.splitlines():
             if not line.startswith("-"):
                 continue
-            parts = line.split(maxsplit=8)
-            if len(parts) != 9:
-                raise RemoteClientError("Could not safely parse SFTP directory listing")
-            try:
-                size = int(parts[4])
-            except ValueError as exc:
-                raise RemoteClientError("Invalid size in SFTP directory listing") from exc
-            filename = parts[8]
-            _validate_filename(filename)
-            if PurePosixPath(filename).suffix.lower() not in self.config.allowed_extensions:
-                continue
-            remote_path = posixpath.join(self.config.remote_archive_dir, filename)
-            files.append(
-                RemoteFile(remote_path, filename, size, _parse_sftp_mtime(parts[5:8]))
+            entry = _parse_regular_listing_entry(
+                line, self.config.remote_archive_dir
             )
+            if PurePosixPath(entry.filename).suffix.lower() not in self.config.allowed_extensions:
+                continue
+            files.append(entry)
         return sorted(files, key=lambda item: item.remote_path)
 
     def stat_file(self, remote_path: str) -> RemoteFile:
         _validate_remote_child(remote_path, self.config.remote_archive_dir)
-        output = self._run_batch(f'ls -ld "{_quote(remote_path)}"')
-        entries = [line for line in output.splitlines() if line.startswith("-")]
+        requested_path = PurePosixPath(posixpath.normpath(remote_path)).as_posix()
+        output = self._run_batch(f'ls -l "{_quote(requested_path)}"')
+        entries = [
+            _parse_regular_listing_entry(line, self.config.remote_archive_dir)
+            for line in output.splitlines()
+            if line.startswith("-")
+        ]
         if len(entries) != 1:
-            raise RemoteClientError("Could not safely parse SFTP file metadata")
-        parts = entries[0].split(maxsplit=8)
-        if len(parts) != 9:
-            raise RemoteClientError("Could not safely parse SFTP file metadata")
-        filename = PurePosixPath(remote_path).name
-        return RemoteFile(remote_path, filename, int(parts[4]), _parse_sftp_mtime(parts[5:8]))
+            raise RemoteClientError(
+                "SFTP file metadata must contain exactly one regular-file entry"
+            )
+        entry = entries[0]
+        if entry.remote_path != requested_path:
+            raise RemoteClientError(
+                "SFTP metadata path does not match the requested remote file"
+            )
+        if PurePosixPath(entry.filename).suffix.lower() not in self.config.allowed_extensions:
+            raise RemoteClientError("SFTP metadata file extension is not allowed")
+        return entry
 
     def download_file(self, remote: RemoteFile, destination: Path) -> None:
         _validate_remote_child(remote.remote_path, self.config.remote_archive_dir)
@@ -104,7 +104,54 @@ def _validate_filename(filename: str) -> None:
         raise RemoteClientError("Control character in remote filename")
 
 
+def _parse_listing_path(value: str, archive_dir: str) -> tuple[str, str]:
+    if not value or any(char in value for char in "\x00\r\n"):
+        raise RemoteClientError("Control character or empty path in SFTP listing")
+
+    returned_path = PurePosixPath(value)
+    if any(part in {".", ".."} for part in returned_path.parts):
+        raise RemoteClientError("Unsafe path returned by SFTP server")
+
+    if returned_path.is_absolute():
+        normalized_path = PurePosixPath(posixpath.normpath(returned_path.as_posix()))
+    elif len(returned_path.parts) == 1:
+        _validate_filename(value)
+        normalized_archive = PurePosixPath(posixpath.normpath(archive_dir))
+        normalized_path = normalized_archive / value
+    else:
+        raise RemoteClientError("Unsafe relative path returned by SFTP server")
+
+    remote_path = normalized_path.as_posix()
+    _validate_remote_child(remote_path, archive_dir)
+    filename = normalized_path.name
+    _validate_filename(filename)
+    return remote_path, filename
+
+
+def _parse_regular_listing_entry(line: str, archive_dir: str) -> RemoteFile:
+    if not line.startswith("-"):
+        raise RemoteClientError("SFTP metadata entry is not a regular file")
+    parts = line.split(maxsplit=8)
+    if len(parts) != 9:
+        raise RemoteClientError("Could not safely parse SFTP regular-file metadata")
+    try:
+        size = int(parts[4])
+    except ValueError as exc:
+        raise RemoteClientError("Invalid size in SFTP regular-file metadata") from exc
+    remote_path, filename = _parse_listing_path(parts[8], archive_dir)
+    return RemoteFile(
+        remote_path,
+        filename,
+        size,
+        _parse_sftp_mtime(parts[5:8]),
+    )
+
+
 def _validate_remote_child(remote_path: str, archive_dir: str) -> None:
+    if not remote_path or any(char in remote_path for char in "\x00\r\n"):
+        raise RemoteClientError("Control character or empty remote path")
+    if any(part in {".", ".."} for part in PurePosixPath(remote_path).parts):
+        raise RemoteClientError("Unsafe remote path traversal")
     normalized = posixpath.normpath(remote_path)
     parent = posixpath.normpath(archive_dir)
     if posixpath.dirname(normalized) != parent or normalized in {parent, "/"}:
@@ -139,4 +186,3 @@ def _redact(value: str, config: LocalSyncConfig) -> str:
         if secret:
             redacted = redacted.replace(secret, "<redacted>")
     return redacted[:1000]
-

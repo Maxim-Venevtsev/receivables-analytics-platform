@@ -456,7 +456,15 @@ def test_remote_client_has_no_mutating_public_operations(tmp_path: Path):
         assert not hasattr(client, name)
 
 
-def test_sftp_inventory_parses_regular_txt_and_preserves_spaces(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize(
+    "listed_path",
+    ["report one.txt", "/archive/report one.txt"],
+)
+def test_sftp_inventory_accepts_filename_and_absolute_path_identically(
+    tmp_path: Path,
+    monkeypatch,
+    listed_path: str,
+):
     captured = {}
 
     def fake_run(args, **kwargs):
@@ -464,7 +472,7 @@ def test_sftp_inventory_parses_regular_txt_and_preserves_spaces(tmp_path: Path, 
         captured.update(kwargs)
         stdout = (
             "sftp> ls -l /archive\n"
-            "-rw-r--r-- 1 owner group 7 Jan 01 2026 report one.txt\n"
+            f"-rw-r--r-- 1 owner group 7 Jan 01 2026 {listed_path}\n"
             "drwxr-xr-x 1 owner group 0 Jan 01 2026 nested\n"
             "-rw-r--r-- 1 owner group 9 Jan 01 2026 ignored.xlsx\n"
         )
@@ -476,6 +484,132 @@ def test_sftp_inventory_parses_regular_txt_and_preserves_spaces(tmp_path: Path, 
     assert captured["shell"] is False
     assert "StrictHostKeyChecking=no" not in captured["args"]
     assert captured["args"][-1] == "sync-user@example.invalid"
+
+
+@pytest.mark.parametrize(
+    "listed_path",
+    [
+        "/outside/report.txt",
+        "/archive/../outside/report.txt",
+        "../report.txt",
+        "subdirectory/report.txt",
+    ],
+)
+def test_sftp_inventory_rejects_unsafe_or_outside_paths(
+    tmp_path: Path,
+    monkeypatch,
+    listed_path: str,
+):
+    def fake_run(args, **kwargs):
+        stdout = f"-rw-r--r-- 1 owner group 7 Jan 01 2026 {listed_path}\n"
+        return CompletedProcess(args, 0, stdout, "")
+
+    monkeypatch.setattr("src.automation.local_sync.remote_client.subprocess.run", fake_run)
+    with pytest.raises(RemoteClientError):
+        OpenSftpRemoteClient(_config(tmp_path)).list_files()
+
+
+@pytest.mark.parametrize(
+    "listed_path",
+    ["report.txt", "/archive/report.txt"],
+)
+def test_sftp_stat_accepts_filename_and_absolute_path_output(
+    tmp_path: Path,
+    monkeypatch,
+    listed_path: str,
+):
+    commands = []
+
+    def fake_batch(self, command):
+        commands.append(command)
+        return f"-rw-r--r-- 1 owner group 7 Jul 1 2026 {listed_path}\n"
+
+    monkeypatch.setattr(OpenSftpRemoteClient, "_run_batch", fake_batch)
+    result = OpenSftpRemoteClient(_config(tmp_path)).stat_file("/archive/report.txt")
+
+    assert result == RemoteFile(
+        "/archive/report.txt",
+        "report.txt",
+        7,
+        "2026-07-01T00:00:00+00:00",
+    )
+    assert commands == ['ls -l "/archive/report.txt"']
+    assert "-d" not in commands[0]
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "",
+        "sftp> ls -l /archive/report.txt\n",
+        "drwxr-xr-x 1 owner group 0 Jul 1 2026 /archive/report.txt\n",
+        "lrwxrwxrwx 1 owner group 7 Jul 1 2026 /archive/report.txt\n",
+    ],
+)
+def test_sftp_stat_rejects_zero_or_non_regular_entries(
+    tmp_path: Path,
+    monkeypatch,
+    output: str,
+):
+    monkeypatch.setattr(OpenSftpRemoteClient, "_run_batch", lambda self, command: output)
+    with pytest.raises(RemoteClientError, match="exactly one regular-file"):
+        OpenSftpRemoteClient(_config(tmp_path)).stat_file("/archive/report.txt")
+
+
+def test_sftp_stat_rejects_multiple_regular_entries(tmp_path: Path, monkeypatch):
+    output = (
+        "-rw-r--r-- 1 owner group 7 Jul 1 2026 /archive/report.txt\n"
+        "-rw-r--r-- 1 owner group 8 Jul 1 2026 /archive/other.txt\n"
+    )
+    monkeypatch.setattr(OpenSftpRemoteClient, "_run_batch", lambda self, command: output)
+    with pytest.raises(RemoteClientError, match="exactly one regular-file"):
+        OpenSftpRemoteClient(_config(tmp_path)).stat_file("/archive/report.txt")
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "-rw-r--r-- malformed\n",
+        "-rw-r--r-- 1 owner group not-a-size Jul 1 2026 /archive/report.txt\n",
+    ],
+)
+def test_sftp_stat_rejects_malformed_regular_listing(
+    tmp_path: Path,
+    monkeypatch,
+    output: str,
+):
+    monkeypatch.setattr(OpenSftpRemoteClient, "_run_batch", lambda self, command: output)
+    with pytest.raises(RemoteClientError):
+        OpenSftpRemoteClient(_config(tmp_path)).stat_file("/archive/report.txt")
+
+
+@pytest.mark.parametrize(
+    ("listed_path", "message"),
+    [
+        ("/archive/other.txt", "does not match"),
+        ("/outside/report.txt", "outside"),
+        ("/archive/../outside/report.txt", "Unsafe path"),
+    ],
+)
+def test_sftp_stat_rejects_wrong_outside_or_traversal_result(
+    tmp_path: Path,
+    monkeypatch,
+    listed_path: str,
+    message: str,
+):
+    output = f"-rw-r--r-- 1 owner group 7 Jul 1 2026 {listed_path}\n"
+    monkeypatch.setattr(OpenSftpRemoteClient, "_run_batch", lambda self, command: output)
+    with pytest.raises(RemoteClientError, match=message):
+        OpenSftpRemoteClient(_config(tmp_path)).stat_file("/archive/report.txt")
+
+
+def test_sftp_stat_rejects_unsupported_sftp_command(tmp_path: Path, monkeypatch):
+    def fake_run(args, **kwargs):
+        return CompletedProcess(args, 1, "", "ls: Invalid flag -d")
+
+    monkeypatch.setattr("src.automation.local_sync.remote_client.subprocess.run", fake_run)
+    with pytest.raises(RemoteClientError, match="SFTP read operation failed"):
+        OpenSftpRemoteClient(_config(tmp_path)).stat_file("/archive/report.txt")
 
 
 def test_sftp_download_uses_read_only_get_command(tmp_path: Path, monkeypatch):
