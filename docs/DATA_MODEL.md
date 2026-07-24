@@ -9,7 +9,7 @@ This document describes the analytical data model of the Debt Management BI plat
 The platform follows a snapshot-based analytical model:
 
 ```text
-Yahoo Mail / ERP TXT / Excel export
+Yahoo Mail
     ↓
 Mail Gateway
     ↓
@@ -17,7 +17,7 @@ mail_inbox
     ↓
 Orchestrator
     ↓
-raw_work / RAW_DIR
+production raw / RAW_DIR
     ↓
 Python ingestion
     ↓
@@ -25,8 +25,22 @@ PostgreSQL fact tables
     ↓
 SQL analytical views
     ↓
-NiceGUI operational frontend
+Online NiceGUI dashboard
+    ↓
+production source-report archive (0644)
+    ↓
+read-only SFTP
+    ↓
+Local Sync staging and SHA256 reconciliation
+    ↓
+local raw / RAW_DIR
+    ↓
+existing Python ingestion
+    ↓
+local PostgreSQL and development dashboard
 ```
+
+Production is the source of truth for incoming source reports. Local development never reads Yahoo Mail and is updated only when a developer manually runs Local Sync.
 
 The model supports:
 
@@ -46,6 +60,7 @@ The model supports:
 - hidden-risk detection.
 - automated pre-ingestion mail processing;
 - restart-safe orchestration before ingestion.
+- secure, restart-safe production-to-local synchronization.
 
 ---
 
@@ -140,8 +155,19 @@ Automation flow:
 3. Orchestrator safely hands files off to `AUTOMATION_RAW_DIR` / `RAW_DIR`.
 4. Orchestrator scans the raw directory and runs existing ingestion only when eligible raw files exist.
 5. Existing ingestion moves successful files to archive and failed files to failed.
+6. Successful production archive files are published with mode `0644`.
+7. Local Sync reads the production archive through read-only SFTP when manually triggered.
+8. Local Sync verifies downloads, reconciles SHA256 identities and hands complete files to local `RAW_DIR`.
+9. The unchanged ingestion pipeline rebuilds local PostgreSQL from source reports.
 
 The ingestion workflow is designed to avoid duplicate loads.
+
+Duplicate identities exist at two boundaries:
+
+- existing ingestion retains its source-filename behavior;
+- Local Sync uses SHA256 as authoritative content identity before ingestion.
+
+Local Sync records same-content/different-name files as aliases without loading them twice. If the same filename represents different content, Local Sync assigns a deterministic hash-suffixed handoff name so ingestion cannot discard changed content based on filename alone.
 
 Current flow:
 
@@ -169,10 +195,16 @@ Runtime directories used by the Automation Layer:
 - `MAIL_MANIFEST_PATH` — SHA256/message manifest for Mail Gateway duplicate detection;
 - `MAIL_LOG_PATH` — Mail Gateway JSONL log;
 - `AUTOMATION_LOG_PATH` — Orchestrator JSONL log.
+- `LOCAL_SYNC_INBOX_DIR` — verified local staging directory; incomplete downloads remain `.part`;
+- `LOCAL_SYNC_MANIFEST_PATH` — versioned SHA256/remote-observation state;
+- `LOCAL_SYNC_LOG_PATH` — Local Sync JSONL operations log;
+- `LOCAL_SYNC_RAW_DIR` — local handoff target and restart-safe ingestion source.
 
 In the work environment, `AUTOMATION_RAW_DIR` and `RAW_DIR` should point to the same real raw directory. The raw directory is the source of truth for deciding whether ingestion should run, which makes the workflow restart-safe if a run stops after handoff but before ingestion.
 
 Mail Gateway and Orchestrator files are runtime artifacts and must not be committed.
+
+Local Sync runtime files, manifests, logs and synchronized source reports are also operational artifacts and must not be committed.
 
 ---
 
@@ -181,7 +213,8 @@ Mail Gateway and Orchestrator files are runtime artifacts and must not be commit
 Supported environments:
 
 - demo environment with synthetic / anonymized data;
-- work environment with real operational data.
+- production work environment with real operational data;
+- local development environment rebuilt from production source reports through manual Local Sync.
 
 Sensitive paths must remain ignored:
 
@@ -692,7 +725,7 @@ The current model does not yet include:
 - collection action history;
 - branch-level access control;
 - automated downgrade alert workflow;
-- scheduled production ETL.
+- proactive ingestion failure notifications and operational status tracking.
 
 
 ---

@@ -53,6 +53,13 @@ def safe_move(source_path: Path, target_dir: Path) -> Path:
     shutil.move(str(source_path), str(target_path))
     return target_path
 
+
+def archive_file(source_path: Path) -> Path:
+    archived_path = safe_move(source_path, ARCHIVE_DIR)
+    archived_path.chmod(0o644)
+    return archived_path
+
+
 def sort_files_by_report_date(files: list[Path]) -> list[Path]:
     def sort_key(path: Path):
         try:
@@ -109,7 +116,7 @@ def main():
         try:
             if already_loaded(path.name):
                 print(f"SKIPPED: already loaded: {path.name}")
-                safe_move(path, ARCHIVE_DIR)
+                archive_file(path)
                 skipped_count += 1
                 continue
 
@@ -124,7 +131,7 @@ def main():
             print("Updating rating history snapshots...")
             insert_history_snapshots()
 
-            archived_path = safe_move(path, ARCHIVE_DIR)
+            archived_path = archive_file(path)
 
             print(f"SUCCESS: {path.name}")
             print(f"Archived to: {archived_path}")

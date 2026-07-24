@@ -18,6 +18,8 @@ Production-style analytical pipeline and interactive dashboard for monitoring re
 - SQL analytical views
 - NiceGUI
 - VPS deployment (Nginx + systemd)
+- scheduled production ingestion
+- secure read-only production-to-development synchronization
 - Responsive UI
 
 ---
@@ -72,6 +74,9 @@ flowchart TD
     --> E[PostgreSQL Warehouse]
     --> F[SQL Analytical Views]
     --> G[NiceGUI Dashboards]
+    D --> H[Production Source Archive]
+    H --> I[Read-only Local Sync]
+    I --> J[Local Development Ingestion]
 ```
 
 ---
@@ -81,7 +86,10 @@ flowchart TD
 ## Data ingestion
 - Source: Axapta-generated TXT / Excel reports
 - Automated Mail Gateway for report attachment pickup
-- Automation Orchestrator for safe handoff into ingestion
+- scheduled Automation Orchestrator for safe handoff into production ingestion
+- restart-safe Local Sync from the production source archive
+- SHA256 content identity and duplicate protection
+- atomic staging and raw-directory handoff
 - Python parsing and normalization
 - Validation and transformation layer
 - Snapshot-based storage
@@ -178,8 +186,11 @@ Reusable frontend components:
 - hidden-risk client detection
 - branch risk profile analysis
 - automated Mail Gateway
-- automated ingestion orchestration
-- end-to-end automated data pipeline
+- scheduled production ingestion orchestration
+- restart-safe production-to-development Local Sync
+- SHA256 content-hash duplicate protection
+- isolated production, local development, and public demo environments
+- end-to-end validated production data pipeline
 
 ---
 
@@ -575,6 +586,8 @@ Key engineering tasks included:
 - parsing and normalizing inconsistent ERP TXT/XLS exports
 - creating a safe pre-ingestion Mail Gateway
 - orchestrating restart-safe file handoff into the ingestion raw directory
+- synchronizing the production archive into local development through read-only access
+- making interrupted downloads and repeated synchronization safe through atomic publication and content hashes
 - building reusable PostgreSQL analytical views
 - implementing hierarchical parent-organization aggregation
 - creating drill-down analytical workflows
@@ -623,21 +636,21 @@ Planned features include:
 
 # ⚠️ Current status
 
-Current version is an operational MVP intended for:
+Current version has reached **Production Foundation v1** and supports:
 
-- controlled demo
-- workflow validation
-- business feedback
-- architecture demonstration
-- end-to-end automated data pipeline validation
+- scheduled production report ingestion
+- automatic online dashboard refresh
+- secure, deliberately manual production-to-development synchronization
+- restart-safe recovery after interrupted transfers or ingestion
+- separate public demo, production, and local development operations
 
-Production hardening still planned:
+Further operational maturity still planned:
 
-- authentication
-- backup strategy
-- deployment automation
-- user management
-- production monitoring and alerting
+- automated PostgreSQL backups and restore testing
+- monitoring and failure notifications beyond current structured logs
+- application-level role-based access control
+- operational status visibility
+- performance engineering
 
 ---
 

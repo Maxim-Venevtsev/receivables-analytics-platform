@@ -1,6 +1,6 @@
 # Future Roadmap
 
-This roadmap is structured by implementation status and product layer. It is intended to guide the next development cycles after the implementation of Credit Quality Rating V2.
+This roadmap is structured by implementation status and product layer. Production Foundation v1 is complete; Performance Engineering is the next active technical phase.
 
 Project timeline note:
 
@@ -8,7 +8,7 @@ Project timeline note:
 - active development started around **20 May 2026**;
 - Credit Quality Rating V2 was implemented in June 2026;
 - the June 2026 data-integrity rebuild corrected current-balance mapping, restored full rating histories and synchronized the online work stand with the validated local database.
-- the Automation Layer, including Mail Gateway and Orchestrator, has been completed and validated locally.
+- the Automation Layer, production schedule, source archive and Local Sync workflow have been deployed and validated with real production reports.
 
 ---
 
@@ -304,7 +304,7 @@ Ensure debt totals reflect current outstanding balances after partial payments a
 
 ## 1.11 Automation Layer
 
-Status: **COMPLETED LOCALLY**
+Status: **COMPLETED, DEPLOYED AND SCHEDULED**
 
 Implemented:
 
@@ -320,13 +320,44 @@ Implemented:
 - safe handoff from `MAIL_INBOX_DIR` to ingestion raw directory;
 - RAW directory used as the source of truth before ingestion;
 - support for `--dry-run`, `--skip-mail`, `--skip-ingestion` and `--limit`;
-- local end-to-end automated pipeline validation.
+- hourly production execution and online refresh;
+- production archive workflow with explicit `0644` publication;
+- production end-to-end validation.
 
-Remaining work is deployment and operations hardening, not implementation of the automation layer itself.
+## 1.12 Production-to-local synchronization
+
+Status: **COMPLETED AND VALIDATED**
+
+Implemented:
+
+- dedicated chrooted SFTP-only access;
+- persistent read-only production archive view;
+- no shell and no production write permission;
+- native Windows OpenSSH transport;
+- SHA256 content identity and alias handling;
+- atomic `.part` downloads and RAW handoff;
+- versioned manifest and corruption recovery;
+- local archive/raw/failed reconciliation;
+- manual normal and dry-run PowerShell/CMD launchers;
+- successful production archive → local PostgreSQL → local dashboard validation;
+- matching production/local latest snapshot and principal metrics.
 
 ---
 
-# 2. In validation / tune next
+# 2. Next active technical phase
+
+## 2.0 Performance Engineering
+
+Status: **NEXT ACTIVE TECHNICAL PHASE**
+
+Scope:
+
+- establish repeatable query and page-load baselines;
+- profile slow analytical views and dashboard queries;
+- inspect query plans and indexing opportunities;
+- measure ingestion and refresh duration as history grows;
+- define performance budgets for core operational pages;
+- validate improvements without changing business definitions.
 
 ## 2.1 Credit Quality V2 threshold tuning
 
@@ -385,7 +416,7 @@ Portfolio Credit Quality Score = weighted average Credit Quality Rating by curre
 
 ## 3.1 Production hardening after work deployment v1
 
-Status: **IMMEDIATE**
+Status: **FOUNDATION COMPLETE / REMAINING OPERATIONS MATURITY**
 
 Goal:
 
@@ -395,28 +426,29 @@ Scope:
 
 - daily PostgreSQL backups;
 - restore test;
-- VPS deployment of the completed Automation Layer;
-- cron or systemd timer scheduling;
 - password rotation;
-- optional SSH deploy key instead of HTTPS token;
 - backup logs;
-- ingestion failure visibility.
+- proactive ingestion failure notifications;
+- operational status page.
 
 ---
 
 ## 3.2 Scheduled automation
 
-Status: **IMMEDIATE STABILIZATION TASK**
+Status: **SCHEDULING COMPLETED / MONITORING REMAINS**
 
 Goal:
 
 Schedule and monitor the completed automation pipeline in the private work environment.
 
-Planned capabilities:
+Completed:
 
-- cron or systemd timer execution;
-- automatic online ingestion;
+- hourly scheduled execution;
+- automatic online ingestion and dashboard refresh;
 - ingestion run logging;
+
+Remaining:
+
 - failure notifications;
 - archive / failed folder monitoring;
 - dashboard freshness monitoring after ingestion.
@@ -960,16 +992,12 @@ Recommended next documentation updates:
 
 ## Immediate
 
-1. Add daily PostgreSQL backups for `receivables_work`.
-2. Perform and document a restore test.
-3. Deploy the completed Automation Layer to VPS.
-4. Add cron or systemd timer scheduling.
-5. Add email monitoring, health checks and alerting.
-6. Rotate deployment and Basic Auth passwords.
-7. Optionally switch deployment access from HTTPS token to SSH deploy key.
-8. Continue daily snapshot accumulation.
-9. Monitor Credit Quality V2 outputs on real clients.
-10. Tune YAML thresholds after 1–2 weeks of observation.
+1. Begin Performance Engineering.
+2. Add daily PostgreSQL backups and retention.
+3. Perform and document a restore test.
+4. Add health checks, failure notifications and dashboard-freshness monitoring.
+5. Continue daily snapshot accumulation.
+6. Monitor and tune Credit Quality V2 outputs.
 
 ## Next product cycle
 
@@ -991,7 +1019,7 @@ Recommended next documentation updates:
 
 ## Next major milestone
 
-### Production deployment
+### Production Foundation v1
 
 Completed:
 
@@ -999,14 +1027,20 @@ Completed:
 - production hosting;
 - password protection through Nginx Basic Auth;
 - demo/work environment separation.
+- scheduled Mail Gateway and Orchestrator;
+- automatic online ingestion;
+- production source archive;
+- secure read-only Local Sync;
+- manual double-click local synchronization;
+- production/local end-to-end validation.
 
 Remaining production stabilization:
 
 - backup procedures;
-- cron scheduling for the completed Automation Layer;
-- automatic online ingestion operations;
 - restore testing;
-- production monitoring.
+- PostgreSQL backup automation and retention;
+- proactive production monitoring and failure notifications;
+- application-level role-based access control.
 
 ### Demo / Work separation
 

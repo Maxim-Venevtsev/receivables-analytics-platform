@@ -39,7 +39,7 @@ https://work.maximvenevtsev.com
 
 Status:
 
-- Production MVP Deployment v1 is live;
+- Production Foundation v1 is live;
 - release tag: `work-deploy-v1`;
 - protected by Nginx Basic Auth;
 - uses real operational data;
@@ -47,6 +47,9 @@ Status:
 - dashboard displays the latest snapshot date as `Данные обновлены: dd.mm.yyyy`;
 - browser title is `Кофточки+`;
 - favicon is enabled.
+- production Mail Gateway and Orchestrator run hourly;
+- the online database and dashboard refresh through the existing ingestion pipeline;
+- the production source archive is exposed to Local Sync through a persistent read-only, chrooted SFTP-only path.
 
 Important:
 
@@ -644,6 +647,7 @@ Rules:
 
 - real ERP exports must not be committed to GitHub;
 - raw files should be moved to `archive` after successful ingestion;
+- every final archived report must be explicitly published with mode `0644`;
 - failed files should be isolated in `failed`;
 - Mail Gateway writes validated attachments into `mail_inbox`;
 - Orchestrator hands eligible `mail_inbox` files into `raw`;
@@ -696,6 +700,7 @@ Responsibilities:
 - Orchestrator optionally runs Mail Gateway, scans `MAIL_INBOX_DIR`, safely hands eligible files into `AUTOMATION_RAW_DIR`, scans raw and runs existing ingestion only when eligible raw files exist.
 - `raw_work` / `RAW_DIR` is the source of truth for ingestion execution.
 - Existing ingestion parses, loads, archives and fails files according to its current business logic.
+- Final archive publication applies file mode `0644` after the move completes; directory permissions are unchanged.
 - PostgreSQL and the dashboard are updated only through the existing ingestion and SQL view layers.
 
 Mail Gateway and Orchestrator do not modify parsing, mapping, rating or SQL business logic.
@@ -708,7 +713,7 @@ Mail Gateway and Orchestrator do not modify parsing, mapping, rating or SQL busi
 4. Dry-run Mail Gateway.
 5. Dry-run Orchestrator.
 6. Run one real execution.
-7. Add cron or systemd timer scheduling.
+7. Enable and validate the hourly scheduler.
 
 Create runtime directories:
 
@@ -748,13 +753,138 @@ Real one-message execution:
 python -m src.automation.orchestrator.cli --limit 1
 ```
 
-Future cron example:
+Scheduling requirement:
 
-```cron
-15 7 * * * cd /home/deploy/receivables-work && . .venv/bin/activate && python -m src.automation.orchestrator.cli >> /home/deploy/receivables-work-data/logs/orchestrator.cron.log 2>&1
+- production orchestration runs hourly;
+- only one run may operate at a time;
+- scheduler output is retained in the production logging path;
+- failed runs require operator review;
+- scheduler configuration remains server-side and must not contain secrets.
+
+## Production archive access for Local Sync
+
+Production reports are synchronized through a dedicated read-only boundary:
+
+```text
+production archive
+    → persistent read-only bind mount
+    → chrooted SFTP-only identity
+    → Local Sync on Windows
 ```
 
-Review cron timing with the business report delivery schedule before enabling.
+Security requirements:
+
+- the synchronization identity has no shell;
+- the identity cannot upload, rename, delete or create remote files/directories;
+- the chroot exposes only the intended read-only archive view;
+- the underlying archive remains owned and written by the production pipeline;
+- archive directories retain their existing restrictive permissions;
+- final report files are mode `0644` so the read-only SFTP process can read them;
+- host keys and private keys are never committed.
+
+Validate the mount after a server restart:
+
+```bash
+mountpoint <read-only-archive-mount>
+findmnt <read-only-archive-mount>
+```
+
+Confirm the mount reports read-only options. Perform upload/delete denial tests only with a harmless test target and never against production reports.
+
+## Local Sync configuration
+
+Local `.env` values use environment-specific values and must not be committed:
+
+```dotenv
+LOCAL_SYNC_SSH_HOST=
+LOCAL_SYNC_SSH_PORT=22
+LOCAL_SYNC_SSH_USER=
+LOCAL_SYNC_SSH_IDENTITY_FILE=
+LOCAL_SYNC_REMOTE_ARCHIVE_DIR=
+LOCAL_SYNC_INBOX_DIR=data/local_sync_inbox
+LOCAL_SYNC_MANIFEST_PATH=data/local_sync_manifest.json
+LOCAL_SYNC_LOG_PATH=data/local_sync_logs/local_sync.jsonl
+LOCAL_SYNC_RAW_DIR=data/raw_work
+LOCAL_SYNC_ARCHIVE_DIR=data/archive_work
+LOCAL_SYNC_FAILED_DIR=data/failed_work
+LOCAL_SYNC_ALLOWED_EXTENSIONS=.txt
+LOCAL_SYNC_CONNECT_TIMEOUT_SECONDS=30
+```
+
+`LOCAL_SYNC_RAW_DIR` and `RAW_DIR` must resolve to the same local directory. Local development never reads Yahoo and never copies the production database; it rebuilds history through source reports and the existing ingestion pipeline.
+
+## Manual local synchronization
+
+Local synchronization is deliberately manual. From the project virtual environment:
+
+```powershell
+python -m src.automation.local_sync.cli --dry-run --order oldest
+python -m src.automation.local_sync.cli --order oldest
+```
+
+Double-click launchers:
+
+```text
+scripts/sync_local_dry_run.cmd
+scripts/sync_local.cmd
+```
+
+The CMD wrappers invoke their matching PowerShell script with `-NoProfile` and `-ExecutionPolicy Bypass`. The PowerShell launchers:
+
+- resolve the project virtual-environment Python;
+- resolve the Local Sync key from the current Windows user profile;
+- require the Windows `ssh-agent` service;
+- check whether that specific key fingerprint is already loaded;
+- request key unlocking through `ssh-add` only when required;
+- retain the console window and propagate the Local Sync exit code.
+
+The dry-run launcher passes `--dry-run`, so it does not write files, repair manifests, hand off reports or run ingestion.
+
+First-run Windows preparation:
+
+1. Install/enable the Windows OpenSSH Client.
+2. Verify the server host fingerprint through the approved operational channel.
+3. Place the dedicated private key in the expected user-profile SSH location.
+4. Start `ssh-agent` from an administrator session if required.
+5. Run the dry-run launcher.
+6. Review the plan before running normal synchronization.
+
+## Local Sync troubleshooting
+
+### `ssh-agent` is not running
+
+Start and configure the Windows service from an administrator PowerShell session, then rerun the launcher. Do not place a plaintext key passphrase in a script or `.env`.
+
+### The key is not loaded
+
+The launcher checks the expected key fingerprint and invokes `ssh-add` when needed. If loading fails, verify the local key file and agent state; do not copy private-key contents into logs or support messages.
+
+### Stale Local Sync lock
+
+First confirm that no Local Sync Python process is running. Only then remove the configured local manifest lock file. Never remove a lock while another synchronization may still be active.
+
+### Permission denied while downloading an archive file
+
+On production, verify:
+
+- the read-only bind mount is present and mounted read-only;
+- the SFTP identity can traverse the chrooted archive path;
+- the final report file has mode `0644`;
+- parent-directory permissions and ownership still match the approved SFTP design.
+
+Do not grant write access or broaden directory permissions to solve a file-read problem.
+
+### Logs and manifest
+
+Default local runtime locations:
+
+```text
+data/local_sync_logs/local_sync.jsonl
+data/local_sync_manifest.json
+data/local_sync_inbox
+```
+
+These files are operational artifacts, may contain source metadata and must remain ignored. A corrupt manifest is timestamp-preserved and rebuilt by hashing eligible files in local inbox/raw/archive/failed directories.
 
 ---
 
@@ -900,6 +1030,17 @@ Completed:
 - [x] Implement Mail Gateway.
 - [x] Implement Orchestrator.
 - [x] Validate end-to-end automation locally.
+- [x] Deploy production Mail Gateway and Orchestrator.
+- [x] Schedule hourly production ingestion.
+- [x] Validate automatic PostgreSQL and online dashboard refresh.
+- [x] Establish the production source-report archive.
+- [x] Publish final archive files with mode `0644`.
+- [x] Configure persistent read-only archive exposure.
+- [x] Configure dedicated chrooted SFTP-only access with no shell/write permission.
+- [x] Implement restart-safe Local Sync with SHA256 identity.
+- [x] Validate atomic download and RAW handoff.
+- [x] Add manual normal and dry-run Windows launchers.
+- [x] Validate production-to-local ingestion and dashboard parity.
 
 ---
 
@@ -907,9 +1048,8 @@ Completed:
 
 1. Add daily PostgreSQL backups for `receivables_work`.
 2. Perform and document a restore test.
-3. Deploy Automation Layer configuration to VPS.
-4. Enable cron or systemd timer scheduling after dry-run validation.
-5. Rotate deployment and Basic Auth passwords.
-6. Optionally replace HTTPS-token deploy access with an SSH deploy key.
-7. Add automation health checks, monitoring and alerting.
-8. Review backup retention and raw-file retention policy.
+3. Add automation health checks, monitoring and failure notifications.
+4. Add an operational status page and dashboard-freshness checks.
+5. Define application-level roles beyond current perimeter authentication.
+6. Review backup retention and raw/archive retention policy.
+7. Begin Performance Engineering and establish production baselines.

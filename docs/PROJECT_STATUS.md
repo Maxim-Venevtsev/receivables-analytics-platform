@@ -2,7 +2,7 @@
 
 ## Current stage
 
-Status: **Production MVP Deployment v1 completed for private work environment**.
+Status: **Production Foundation v1 completed and validated end to end**.
 
 The system now supports:
 
@@ -30,7 +30,14 @@ The system now supports:
 - invoice lifecycle and recent paid invoice analytics.
 - Automation Layer: Mail Gateway and Orchestrator;
 - restart-safe processing from mailbox to raw ingestion directory;
-- backlog processing for both mail inbox and raw directory.
+- backlog processing for both mail inbox and raw directory;
+- scheduled hourly production ingestion and online dashboard refresh;
+- production source-report archive;
+- restart-safe Local Sync into the local development environment;
+- dedicated read-only, chrooted SFTP-only access with no shell or write permission;
+- SHA256 content identity, atomic transfer/handoff and manifest recovery;
+- double-click manual Local Sync and dry-run launchers;
+- validated matching latest snapshot dates and principal metrics between production and local dashboards.
 
 Project timeline note:
 
@@ -38,6 +45,7 @@ Project timeline note:
 - active product development accelerated around **20 May 2026**;
 - by June 2026 the product reached an advanced local MVP stage with Credit Quality V2 implemented across core analytical views and main UI layers;
 - after the June 2026 data-integrity rebuild, local and online work environments were synchronized on the validated historical database.
+- by July 2026 the production automation, read-only Local Sync path and production/local validation formed Production Foundation v1.
 
 ---
 
@@ -210,7 +218,35 @@ Implemented:
 
 ---
 
-## Recently completed major phase
+## Recently completed major phases
+
+## Production Foundation v1
+
+Status: **COMPLETED AND VALIDATED WITH PRODUCTION REPORTS**
+
+Completed:
+
+- production Mail Gateway and restart-safe Orchestrator;
+- hourly scheduled production ingestion;
+- PostgreSQL and online dashboard refresh through the existing ingestion pipeline;
+- durable production source-report archive;
+- archive publication with explicit file mode `0644`;
+- persistent read-only archive view for synchronization;
+- dedicated chrooted SFTP-only identity with no shell and no write access;
+- native Windows OpenSSH Local Sync;
+- SHA256 content identity and duplicate/alias handling;
+- atomic `.part` download and atomic RAW handoff;
+- versioned manifest, corruption recovery and reconciliation with local inbox/raw/archive/failed directories;
+- manual PowerShell and CMD launchers for normal and dry-run synchronization;
+- real production-to-local end-to-end validation;
+- matching production/local latest snapshot dates and principal dashboard metrics.
+
+Operational boundary:
+
+- production refresh is automatic and scheduled;
+- local development synchronization is deliberately manual;
+- local development never reads Yahoo Mail;
+- production remains the source of truth for incoming source reports.
 
 ## Production MVP Deployment v1
 
@@ -235,19 +271,18 @@ The private work deployment is now live:
 
 The existing public demo remains available at `https://demo.maximvenevtsev.com` with anonymized/generated data.
 
-Immediate stabilization tasks:
+Remaining stabilization tasks:
 
 - daily PostgreSQL backups;
 - restore test;
-- VPS scheduling for the completed automation layer;
 - password rotation;
-- optional SSH deploy key instead of HTTPS token.
+- monitoring and failure notifications beyond current logs.
 
 ---
 
 ## Automation Layer — Mail Gateway and Orchestrator
 
-Status: **COMPLETED LOCALLY AND VALIDATED END TO END**
+Status: **DEPLOYED, SCHEDULED HOURLY AND VALIDATED END TO END**
 
 Purpose:
 
@@ -295,7 +330,9 @@ Completed:
 - RAW directory treated as the source of truth for ingestion execution;
 - existing ingestion triggered only when eligible raw files exist;
 - support for `--dry-run`, `--skip-mail`, `--skip-ingestion` and `--limit`;
-- end-to-end automated local pipeline successfully validated.
+- end-to-end production pipeline successfully validated;
+- hourly scheduled execution and online dashboard refresh;
+- production archive publication for every successfully processed source report.
 
 Important boundary:
 
@@ -477,7 +514,7 @@ Implemented:
 ## Current architecture
 
 ```text
-Yahoo Mail / TXT / Excel
+Yahoo Mail
     ↓
 Mail Gateway
     ↓
@@ -493,7 +530,17 @@ PostgreSQL
     ↓
 SQL analytical views
     ↓
-NiceGUI operational frontend
+Online NiceGUI dashboard
+    ↓
+Production archive
+    ↓
+Read-only SFTP
+    ↓
+Local Sync (manual)
+    ↓
+local raw_work → existing ingestion → local PostgreSQL
+    ↓
+Local development dashboard
 ```
 
 ---
@@ -504,14 +551,15 @@ Not yet implemented:
 
 - role model;
 - automated backups;
+- documented restore testing;
 - user action history;
 - comments/workflow tracking;
 - notification system;
 - real payment history integration;
 - credit limits;
 - credit policy action workflow.
-- VPS cron scheduling for the completed Automation Layer;
-- automation health checks and alerting.
+- automation health checks, proactive notifications and operational status page;
+- performance engineering and load characterization.
 
 ---
 
@@ -550,16 +598,14 @@ Current build is suitable for:
 
 ---
 
-## Recommended immediate next steps
+## Recommended next steps
 
-1. Add scheduled daily PostgreSQL backups for `receivables_work`.
-2. Perform and document a restore test using the June 2026 promotion backup as reference.
-3. Deploy the completed Automation Layer to VPS and schedule it with cron/systemd timer.
-4. Rotate deployment and Basic Auth passwords.
-5. Optionally switch deployment access from HTTPS token to SSH deploy key.
-6. Continue daily snapshot accumulation.
-7. Monitor Credit Quality V2 migration output on real examples.
-8. Tune YAML thresholds based on observed false positives / false negatives.
+1. Begin Performance Engineering as the next active technical phase.
+2. Add scheduled daily PostgreSQL backups and retention.
+3. Perform and document a restore test.
+4. Add automation health checks, failure notifications and an operational status view.
+5. Define application-level roles beyond current perimeter authentication.
+6. Continue snapshot accumulation and Credit Quality V2 observation.
 
 
 ---
