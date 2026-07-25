@@ -5,9 +5,12 @@ from urllib.parse import quote
 import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build
+from src.app.services.settings import get_page_response_timeout
 from src.app.components.clients_table import render_clients_table
 from src.app.components.branch_table import render_branch_table
 
@@ -71,9 +74,8 @@ DUE_SOON_BRANCH_COLUMNS = [
 ]
 
 
-def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn, params=params)
+async def query_df(sql: str, params: dict | None = None, *, operation: str) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation, params=params)
 
 
 def money(value) -> str:
@@ -125,7 +127,7 @@ def normalize_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFr
     return result
 
 
-def load_forecast_data(mode: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+async def load_forecast_data(mode: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     is_today = mode == "today"
 
     target_condition = (
@@ -137,7 +139,7 @@ def load_forecast_data(mode: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     target_amount_col = "due_today" if is_today else "due_soon_only"
     target_share_col = "due_today_share_pct" if is_today else "due_soon_share_pct"
 
-    clients_df = query_df(f"""
+    clients_df = await query_df(f"""
         WITH target_invoices AS (
             SELECT
                 i.client_id,
@@ -163,9 +165,9 @@ def load_forecast_data(mode: str) -> tuple[pd.DataFrame, pd.DataFrame]:
             s.{target_amount_col} DESC,
             s.shifted_amount DESC,
             s.total_debt DESC
-    """)
+    """, operation=f"forecast_{mode}_clients")
 
-    branches_df = query_df(f"""
+    branches_df = await query_df(f"""
         WITH target_invoices AS (
             SELECT
                 i.client_id,
@@ -269,12 +271,12 @@ def load_forecast_data(mode: str) -> tuple[pd.DataFrame, pd.DataFrame]:
             {target_amount_col} DESC,
             shifted_amount DESC,
             total_debt DESC
-    """)
+    """, operation=f"forecast_{mode}_branches")
 
     return clients_df, branches_df
 
 
-def render_forecast_page(mode: str):
+async def render_forecast_page(mode: str):
     is_today = mode == "today"
 
     page_title = "К оплате сегодня" if is_today else "К оплате в ближайшие три дня"
@@ -300,7 +302,7 @@ def render_forecast_page(mode: str):
 
     top_navigation()
 
-    clients_df, branches_df = load_forecast_data(mode)
+    clients_df, branches_df = await load_forecast_data(mode)
 
     if clients_df.empty:
         message = (
@@ -533,11 +535,13 @@ def render_forecast_page(mode: str):
     reset_branch_button.on_click(reset_branch_filter)
 
 
-@ui.page("/due-today")
-def due_today_page():
-    render_forecast_page("today")
+@ui.page("/due-today", response_timeout=get_page_response_timeout())
+@page_build("due_today", "/due-today")
+async def due_today_page():
+    await render_forecast_page("today")
 
 
-@ui.page("/due-soon")
-def due_soon_page():
-    render_forecast_page("soon")
+@ui.page("/due-soon", response_timeout=get_page_response_timeout())
+@page_build("due_soon", "/due-soon")
+async def due_soon_page():
+    await render_forecast_page("soon")

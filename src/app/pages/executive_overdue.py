@@ -5,9 +5,12 @@ from urllib.parse import quote
 import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build
+from src.app.services.settings import get_page_response_timeout
 from src.app.components.kpi_cards import money, percent
 from src.app.components.clients_table import render_clients_table
 
@@ -20,9 +23,8 @@ engine = create_engine(
 )
 
 
-def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn, params=params)
+async def query_df(sql: str, params: dict | None = None, *, operation: str) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation, params=params)
 
 
 def compact_kpi(title: str, value: str, subtitle: str = ""):
@@ -33,8 +35,9 @@ def compact_kpi(title: str, value: str, subtitle: str = ""):
             ui.label(subtitle).classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
 
-@ui.page("/executive/overdue")
-def executive_overdue_page():
+@ui.page("/executive/overdue", response_timeout=get_page_response_timeout())
+@page_build("executive_overdue", "/executive/overdue")
+async def executive_overdue_page():
     ui.label("Просроченная задолженность").classes("text-3xl font-bold mb-2")
     ui.label(
         "Клиенты, формирующие текущую просрочку по портфелю дебиторской задолженности"
@@ -47,7 +50,7 @@ def executive_overdue_page():
         on_click=lambda: ui.navigate.to("/executive"),
     ).props("flat color=primary").classes("mb-4")
 
-    overdue_clients = query_df("""
+    overdue_clients = await query_df("""
         SELECT *
         FROM core.v_client_operational_summary
         WHERE overdue_debt > 0
@@ -55,7 +58,7 @@ def executive_overdue_page():
             overdue_debt DESC,
             max_days_overdue DESC,
             total_debt DESC
-    """)
+    """, operation="executive_overdue_clients")
 
     if overdue_clients.empty:
         ui.label("Просроченной задолженности не обнаружено.").classes(

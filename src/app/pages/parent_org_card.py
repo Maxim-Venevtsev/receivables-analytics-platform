@@ -5,9 +5,12 @@ import pandas as pd
 from dotenv import load_dotenv
 from fastapi import Request
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build
+from src.app.services.settings import get_page_response_timeout
 from src.app.components.rating_stars import rating_stars_html
 from src.app.components.charts import (
     build_client_debt_history_chart,
@@ -42,9 +45,8 @@ engine = create_engine(
 )
 
 
-def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn, params=params)
+async def query_df(sql: str, params: dict | None = None, *, operation: str) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation, params=params)
 
 
 def money(value) -> str:
@@ -88,12 +90,16 @@ def aging_bucket(row) -> str:
             )
 
 
-@ui.page("/parent-org/{parent_org_id}")
-def parent_org_card_page(parent_org_id: str, request: Request):
+@ui.page(
+    "/parent-org/{parent_org_id}",
+    response_timeout=get_page_response_timeout(),
+)
+@page_build("parent_org_card", "/parent-org/{parent_org_id}")
+async def parent_org_card_page(parent_org_id: str, request: Request):
     source_client_id = request.query_params.get("client_id")
     back_target = f"/client/{source_client_id}?from=dashboard" if source_client_id else "/"
 
-    invoices = query_df("""
+    invoices = await query_df("""
         SELECT
             i.parent_org_id,
             i.client_id,
@@ -148,7 +154,7 @@ def parent_org_card_page(parent_org_id: str, request: Request):
                 ON i.client_id = r.client_id
             WHERE i.parent_org_id = :parent_org_id
         ORDER BY i.client_group, i.client_name, i.due_date
-    """, {"parent_org_id": parent_org_id})
+    """, {"parent_org_id": parent_org_id}, operation="parent_org_card_invoices")
 
     if invoices.empty:
         ui.label(f"Карточка вышестоящей: {parent_org_id}").classes("text-3xl font-bold mb-2")
@@ -156,7 +162,7 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         ui.label("Нет данных по этой вышестоящей организации.").classes("text-lg text-red-700")
         return
 
-    paid_invoices = query_df("""
+    paid_invoices = await query_df("""
         SELECT
             p.client_id,
             p.client_name,
@@ -201,9 +207,9 @@ def parent_org_card_page(parent_org_id: str, request: Request):
             p.paid_amount_detected DESC
 
         LIMIT 30
-    """, {"parent_org_id": parent_org_id})
+    """, {"parent_org_id": parent_org_id}, operation="parent_org_card_paid_invoices")
 
-    history_df = query_df("""
+    history_df = await query_df("""
         SELECT
             report_generated_date,
             total_debt,
@@ -216,9 +222,9 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         FROM core.v_parent_org_daily_history
         WHERE parent_org_id = :parent_org_id
         ORDER BY report_generated_date
-    """, {"parent_org_id": parent_org_id})
+    """, {"parent_org_id": parent_org_id}, operation="parent_org_card_history")
 
-    rating_migration = query_df("""
+    rating_migration = await query_df("""
         WITH current_client_debt AS (
             SELECT
                 client_id,
@@ -234,13 +240,13 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         LEFT JOIN current_client_debt d
             ON m.client_id = d.client_id
         WHERE m.parent_org_id = :parent_org_id
-    """, {"parent_org_id": parent_org_id})
+    """, {"parent_org_id": parent_org_id}, operation="parent_org_card_rating_migration")
 
-    credit_quality_clients = query_df("""
+    credit_quality_clients = await query_df("""
         SELECT *
         FROM core.v_client_credit_quality_rating
         WHERE parent_org_id = :parent_org_id
-    """, {"parent_org_id": parent_org_id})
+    """, {"parent_org_id": parent_org_id}, operation="parent_org_card_credit_quality")
 
     summary = (
         invoices
@@ -261,7 +267,7 @@ def parent_org_card_page(parent_org_id: str, request: Request):
         summary["overdue_debt"] / summary["total_debt"] * 100
     ).fillna(0)
 
-    clients = query_df("""
+    clients = await query_df("""
         SELECT *
         FROM core.v_client_operational_summary
         WHERE parent_org_id = :parent_org_id
@@ -273,7 +279,7 @@ def parent_org_card_page(parent_org_id: str, request: Request):
             payment_attention_amount DESC,
             shifted_amount DESC,
             total_debt DESC
-    """, {"parent_org_id": parent_org_id})
+    """, {"parent_org_id": parent_org_id}, operation="parent_org_card_clients")
 
     if summary.empty or invoices.empty:
         ui.label("Нет данных по этой вышестоящей организации.").classes("text-lg text-red-700")

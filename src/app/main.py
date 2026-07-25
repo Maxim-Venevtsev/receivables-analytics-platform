@@ -4,8 +4,8 @@ from urllib.parse import quote
 
 import pandas as pd
 from dotenv import load_dotenv
-from nicegui import ui
-from sqlalchemy import create_engine, text
+from nicegui import app, ui
+from sqlalchemy import create_engine
 
 from src.app.pages.deltas import deltas_page
 from src.app.pages.overdue import overdue_page
@@ -26,11 +26,20 @@ from src.app.pages.term_shifts import term_shifts_page
 from src.app.components.navigation import top_navigation
 from src.app.components.clients_table import render_clients_table
 from src.app.components.branch_table import render_branch_table
+from src.app.services.database import read_dataframe, read_scalar
+from src.app.services.settings import get_page_response_timeout
+from src.app.services.performance import (
+    configure as configure_performance,
+    get_reload_enabled,
+    page_build,
+    span,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 APP_DIR = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
+performance = configure_performance(PROJECT_ROOT)
 
 engine = create_engine(
     f"postgresql+psycopg2://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@"
@@ -67,18 +76,20 @@ DASHBOARD_BRANCH_COLUMNS = [
 ]
 
 
-def query_df(sql: str) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn)
+async def query_df(sql: str, *, operation: str) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation)
 
 
-def get_latest_snapshot_date() -> str:
+async def get_latest_snapshot_date() -> str:
     try:
-        with engine.connect() as conn:
-            value = conn.execute(text("""
-                SELECT MAX(report_generated_date)
-                FROM core.receivables_snapshot_fact
-            """)).scalar()
+        value = await read_scalar(
+            engine,
+            """
+                    SELECT MAX(report_generated_date)
+                    FROM core.receivables_snapshot_fact
+                """,
+            operation="latest_snapshot",
+        )
     except Exception:
         return "—"
 
@@ -212,30 +223,31 @@ def normalize_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFr
     return result
 
 
-@ui.page("/")
-def dashboard():
+@ui.page("/", response_timeout=get_page_response_timeout())
+@page_build("dashboard", "/")
+async def dashboard():
     ui.label("АРС — Дебиторка").classes("text-3xl font-bold mb-2")
     ui.label(
         "Операционный центр контроля дебиторской задолженности."
     ).classes("text-gray-500 mb-1")
     ui.label(
-        f"Данные обновлены: {get_latest_snapshot_date()}"
+        f"Данные обновлены: {await get_latest_snapshot_date()}"
     ).classes("text-xs text-gray-500 mb-4")
 
     top_navigation()
 
-    kpi = query_df("""
+    kpi = (await query_df("""
         SELECT *
         FROM core.v_dashboard_operational_kpi
-    """).iloc[0]
+    """, operation="dashboard_kpi")).iloc[0]
 
-    branches = query_df("""
+    branches = await query_df("""
         SELECT *
         FROM core.v_dashboard_operational_branches
         ORDER BY overdue_debt DESC, shifted_amount DESC, payment_attention_amount DESC
-    """)
+    """, operation="dashboard_branches")
 
-    clients = query_df("""
+    clients = await query_df("""
         SELECT *
         FROM core.v_client_operational_summary
         ORDER BY
@@ -245,7 +257,7 @@ def dashboard():
             due_soon_only DESC,
             payment_attention_amount DESC,
             shifted_amount DESC
-    """)
+    """, operation="dashboard_clients")
 
     if clients.empty:
         ui.label("Нет клиентов, требующих операционного контроля.").classes("text-lg text-green-700")
@@ -265,10 +277,10 @@ def dashboard():
         "stars",
     ]
 
-    branches = normalize_numeric_columns(branches, numeric_cols)
-    clients = normalize_numeric_columns(clients, numeric_cols)
-
-    branches = branches[branches["total_debt"] >= 1].copy()
+    with span("pandas_timing", "dashboard_dataframe_prepare"):
+        branches = normalize_numeric_columns(branches, numeric_cols)
+        clients = normalize_numeric_columns(clients, numeric_cols)
+        branches = branches[branches["total_debt"] >= 1].copy()
 
     selected_branches: list[str] = []
 
@@ -400,30 +412,31 @@ def dashboard():
         selected_branch_label = ui.label("Показаны все филиалы").classes("text-sm text-gray-500")
         reset_branch_button = ui.button("ВСЕ ФИЛИАЛЫ").props("flat color=primary")
 
-    branch_table = render_branch_table(
-        branches=filtered_branches(),
-        title="Сводка по филиалам",
-        subtitle=(
-            "Агрегация операционных сигналов по филиалам. "
-            "Нажатие на филиал ограничивает клиентскую сводку выбранным филиалом."
-        ),
-        mode="operational",
-        selected_branches=selected_branches,
-        rows_per_page=20,
-        visible_columns=DASHBOARD_BRANCH_COLUMNS,
-    )
+    with span("serialization_timing", "dashboard_table_prepare"):
+        branch_table = render_branch_table(
+            branches=filtered_branches(),
+            title="Сводка по филиалам",
+            subtitle=(
+                "Агрегация операционных сигналов по филиалам. "
+                "Нажатие на филиал ограничивает клиентскую сводку выбранным филиалом."
+            ),
+            mode="operational",
+            selected_branches=selected_branches,
+            rows_per_page=20,
+            visible_columns=DASHBOARD_BRANCH_COLUMNS,
+        )
 
-    client_table = render_clients_table(
-        clients=filtered_clients(),
-        title="Контрагенты",
-        subtitle=None,
-        show_branch=True,
-        show_search=True,
-        from_route="dashboard",
-        visible_columns=DASHBOARD_CLIENT_COLUMNS,
-        default_sort_by="total_debt",
-        default_sort_descending=True,
-    )
+        client_table = render_clients_table(
+            clients=filtered_clients(),
+            title="Контрагенты",
+            subtitle=None,
+            show_branch=True,
+            show_search=True,
+            from_route="dashboard",
+            visible_columns=DASHBOARD_CLIENT_COLUMNS,
+            default_sort_by="total_debt",
+            default_sort_descending=True,
+        )
 
     def update_kpi_cards():
         current = get_metrics()
@@ -518,4 +531,29 @@ def dashboard():
     reset_branch_button.on_click(reset_branch_filter)
 
 
-ui.run(title="Кофточки+", favicon=str(APP_DIR / "static" / "favicon.svg"))
+async def _performance_startup() -> None:
+    await performance.start()
+
+
+async def _performance_shutdown() -> None:
+    await performance.stop()
+
+
+def _performance_client_connect() -> None:
+    performance.emit("client_connect", success=True)
+
+
+def _performance_client_disconnect() -> None:
+    performance.emit("client_disconnect", success=True)
+
+
+app.on_startup(_performance_startup)
+app.on_shutdown(_performance_shutdown)
+app.on_connect(_performance_client_connect)
+app.on_disconnect(_performance_client_disconnect)
+
+ui.run(
+    title="Кофточки+",
+    favicon=str(APP_DIR / "static" / "favicon.svg"),
+    reload=get_reload_enabled(),
+)

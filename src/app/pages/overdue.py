@@ -5,9 +5,12 @@ from urllib.parse import quote
 import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build
+from src.app.services.settings import get_page_response_timeout
 from src.app.components.clients_table import render_clients_table
 from src.app.components.branch_table import render_branch_table
 
@@ -50,9 +53,8 @@ OVERDUE_BRANCH_COLUMNS = [
 ]
 
 
-def query_df(sql: str) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn)
+async def query_df(sql: str, *, operation: str) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation)
 
 
 def money(value) -> str:
@@ -104,8 +106,9 @@ def normalize_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFr
     return result
 
 
-@ui.page("/overdue")
-def overdue_page():
+@ui.page("/overdue", response_timeout=get_page_response_timeout())
+@page_build("overdue", "/overdue")
+async def overdue_page():
     ui.label("Просроченная дебиторка").classes("text-3xl font-bold mb-2")
     ui.label(
         "Клиенты и филиалы с просроченной задолженностью. "
@@ -114,7 +117,7 @@ def overdue_page():
 
     top_navigation()
 
-    clients = query_df("""
+    clients = await query_df("""
         SELECT *
         FROM core.v_client_operational_summary
         WHERE overdue_debt > 0
@@ -122,13 +125,13 @@ def overdue_page():
             overdue_debt DESC,
             max_days_overdue DESC,
             total_debt DESC
-    """)
+    """, operation="overdue_clients")
 
     if clients.empty:
         ui.label("Просроченной задолженности нет.").classes("text-lg text-green-700")
         return
 
-    branches = query_df("""
+    branches = await query_df("""
         WITH branch_debt AS (
             SELECT
                 client_group,
@@ -215,7 +218,7 @@ def overdue_page():
             b.debt_120_plus DESC,
             b.max_days_overdue DESC,
             b.total_debt DESC
-    """)
+    """, operation="overdue_branches")
 
     numeric_cols = [
         "total_debt",

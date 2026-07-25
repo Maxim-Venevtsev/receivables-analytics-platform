@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 import os
 from urllib.parse import quote
@@ -5,9 +6,12 @@ from urllib.parse import quote
 import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build
+from src.app.services.settings import get_page_response_timeout
 from src.app.components.kpi_cards import money
 from src.app.components.rating_stars import rating_stars_html
 
@@ -21,9 +25,13 @@ engine = create_engine(
 )
 
 
-def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn, params=params)
+async def query_df(
+    sql: str,
+    params: dict | None = None,
+    *,
+    operation: str,
+) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation, params=params)
 
 
 def date_fmt(value) -> str:
@@ -193,8 +201,9 @@ def add_branch_summary_slots(table):
         )
 
 
-@ui.page("/deltas")
-def deltas_page():
+@ui.page("/deltas", response_timeout=get_page_response_timeout())
+@page_build("deltas", "/deltas")
+async def deltas_page():
     ui.label("Операционные изменения за день").classes("text-3xl font-bold mb-2")
     ui.label(
         "Что изменилось между последним отчетным днем и выбранным предыдущим."
@@ -215,12 +224,12 @@ def deltas_page():
     container = ui.column().classes("w-full")
     selected_branches: list[str] = []
 
-    def render():
+    async def render_content():
         container.clear()
         selected_branches.clear()
         offset = int(selected_offset.value)
 
-        snapshot_info = query_df("""
+        snapshot_info = await query_df("""
             WITH snapshot_dates AS (
                 SELECT
                     report_generated_date,
@@ -234,7 +243,7 @@ def deltas_page():
                 MAX(report_generated_date) FILTER (WHERE rn = 1) AS latest_snapshot_date,
                 MAX(report_generated_date) FILTER (WHERE rn = :base_rn) AS base_snapshot_date
             FROM snapshot_dates
-        """, {"base_rn": offset + 1})
+        """, {"base_rn": offset + 1}, operation="deltas_snapshot_info")
 
         if snapshot_info.empty or pd.isna(snapshot_info.iloc[0]["base_snapshot_date"]):
             with container:
@@ -249,7 +258,7 @@ def deltas_page():
             "base_snapshot_date": base_snapshot_date,
         }
 
-        kpi = query_df("""
+        kpi = await query_df("""
             WITH base_snapshot AS (
                 SELECT *
                 FROM core.receivables_snapshot_fact
@@ -311,9 +320,9 @@ def deltas_page():
                 (SELECT COUNT(*) FROM term_shift_events) AS shifted_invoice_count,
                 (SELECT COALESCE(SUM(invoice_amount), 0) FROM new_overdue_events) AS new_overdue_debt,
                 (SELECT COUNT(*) FROM new_overdue_events) AS new_overdue_invoice_count
-        """, params)
+        """, params, operation="deltas_kpi")
 
-        summary = query_df("""
+        summary = await query_df("""
             WITH base_snapshot AS (
                 SELECT *
                 FROM core.receivables_snapshot_fact
@@ -429,9 +438,9 @@ def deltas_page():
             ORDER BY
                 a.movement_importance DESC,
                 ABS(a.net_delta) DESC
-        """, params)
+        """, params, operation="deltas_client_summary")
 
-        branch_summary = query_df("""
+        branch_summary = await query_df("""
             WITH base_snapshot AS (
                 SELECT *
                 FROM core.receivables_snapshot_fact
@@ -534,9 +543,9 @@ def deltas_page():
             ORDER BY
                 a.movement_importance DESC,
                 ABS(a.net_delta) DESC
-        """, params)
+        """, params, operation="deltas_branch_summary")
 
-        term_shifts = query_df("""
+        term_shifts = await query_df("""
             WITH base_snapshot AS (
                 SELECT *
                 FROM core.receivables_snapshot_fact
@@ -578,9 +587,9 @@ def deltas_page():
                 ON l.client_id = cq.client_id
             WHERE COALESCE(l.due_date::text, '') <> COALESCE(b.due_date::text, '')
             ORDER BY ABS(l.invoice_amount) DESC
-        """, params)
+        """, params, operation="deltas_term_shifts")
 
-        new_overdue = query_df("""
+        new_overdue = await query_df("""
             WITH base_snapshot AS (
                 SELECT *
                 FROM core.receivables_snapshot_fact
@@ -622,7 +631,7 @@ def deltas_page():
             WHERE l.is_overdue_real = TRUE
               AND COALESCE(b.is_overdue_real, FALSE) = FALSE
             ORDER BY l.invoice_amount DESC
-        """, params)
+        """, params, operation="deltas_new_overdue")
 
         if kpi.empty:
             with container:
@@ -874,5 +883,14 @@ def deltas_page():
 
             apply_branch_filter()
 
-    selected_offset.on_value_change(lambda _: render())
-    render()
+    render_lock = asyncio.Lock()
+
+    async def render() -> None:
+        async with render_lock:
+            await render_content()
+
+    async def rerender(_event) -> None:
+        await render()
+
+    selected_offset.on_value_change(rerender)
+    await render()

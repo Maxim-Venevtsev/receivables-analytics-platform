@@ -5,9 +5,12 @@ from urllib.parse import quote
 import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build
+from src.app.services.settings import get_page_response_timeout
 from src.app.components.kpi_cards import money
 from src.app.components.charts import build_long_green_exposure_chart
 from src.app.components.clients_table import render_clients_table
@@ -22,9 +25,8 @@ engine = create_engine(
 )
 
 
-def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn, params=params)
+async def query_df(sql: str, params: dict | None = None, *, operation: str) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation, params=params)
 
 
 def compact_kpi(title: str, value: str, subtitle: str = ""):
@@ -35,8 +37,9 @@ def compact_kpi(title: str, value: str, subtitle: str = ""):
             ui.label(subtitle).classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
 
-@ui.page("/executive/long-green")
-def executive_long_green_page():
+@ui.page("/executive/long-green", response_timeout=get_page_response_timeout())
+@page_build("executive_long_green", "/executive/long-green")
+async def executive_long_green_page():
     ui.label("Длинная непросроченная задолженность").classes("text-3xl font-bold mb-2")
     ui.label(
         "Контроль клиентов с длинными сроками оплаты при отсутствии формальной просрочки"
@@ -49,7 +52,7 @@ def executive_long_green_page():
         on_click=lambda: ui.navigate.to("/executive"),
     ).props("flat color=primary").classes("mb-4")
 
-    long_green_clients = query_df("""
+    long_green_clients = await query_df("""
         SELECT *
         FROM core.v_client_operational_summary
         WHERE
@@ -57,13 +60,13 @@ def executive_long_green_page():
             OR green_60_plus_debt > 0
             OR green_90_plus_debt > 0
             OR green_120_plus_debt > 0
-    """)
+    """, operation="executive_long_green_clients")
 
-    long_green_history = query_df("""
+    long_green_history = await query_df("""
         SELECT *
         FROM core.v_executive_long_green_exposure
         ORDER BY report_generated_date
-    """)
+    """, operation="executive_long_green_history")
 
     if long_green_clients.empty:
         ui.label(

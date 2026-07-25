@@ -28,6 +28,7 @@ data/mail_manifest*.json
 data/mail_gateway_manifest*.json
 data/automation_logs/
 data/orchestrator*.jsonl
+data/performance/
 
 # local sync runtime files
 data/local_sync_inbox/

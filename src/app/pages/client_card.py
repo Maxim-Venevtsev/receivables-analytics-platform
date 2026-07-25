@@ -4,10 +4,13 @@ import os
 import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from fastapi import Request
 
 from src.app.components.navigation import top_navigation
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build
+from src.app.services.settings import get_page_response_timeout
 from src.app.components.rating_stars import rating_stars_html
 from src.app.components.charts import (
     build_client_debt_history_chart,
@@ -42,14 +45,18 @@ engine = create_engine(
 )
 
 
-def query_df(sql: str, params: dict = None) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn, params=params)
+async def query_df(sql: str, params: dict = None, *, operation: str) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation, params=params)
 
 
-def query_optional_df(sql: str, params: dict = None) -> pd.DataFrame:
+async def query_optional_df(
+    sql: str,
+    params: dict = None,
+    *,
+    operation: str,
+) -> pd.DataFrame:
     try:
-        return query_df(sql, params=params)
+        return await query_df(sql, params=params, operation=operation)
     except Exception:
         return pd.DataFrame()
 
@@ -60,8 +67,8 @@ def date_fmt(value) -> str:
     return pd.to_datetime(value).strftime("%d.%m.%Y")
 
 
-def get_historical_client_identity(client_id: str) -> pd.DataFrame:
-    return query_optional_df("""
+async def get_historical_client_identity(client_id: str) -> pd.DataFrame:
+    return await query_optional_df("""
         WITH client_daily AS (
             SELECT
                 report_generated_date,
@@ -94,7 +101,7 @@ def get_historical_client_identity(client_id: str) -> pd.DataFrame:
         CROSS JOIN client_bounds b
         WHERE d.report_generated_date = b.last_seen
         LIMIT 1
-    """, {"client_id": client_id})
+    """, {"client_id": client_id}, operation="client_card_historical_identity")
 
 
 def aging_bucket(row) -> str:
@@ -252,8 +259,12 @@ def render_history_section(history_df: pd.DataFrame, rating_migration: pd.DataFr
     render_history_charts()
 
 
-@ui.page("/client/{client_id}")
-def client_card_page(client_id: str, request: Request):
+@ui.page(
+    "/client/{client_id}",
+    response_timeout=get_page_response_timeout(),
+)
+@page_build("client_card", "/client/{client_id}")
+async def client_card_page(client_id: str, request: Request):
 
     origin = request.query_params.get("from", "dashboard")
 
@@ -284,7 +295,7 @@ def client_card_page(client_id: str, request: Request):
     else:
         back_target = back_routes.get(origin, "/")
 
-    df = query_df("""
+    df = await query_df("""
         SELECT
             i.parent_org_id,
             i.client_id,
@@ -332,17 +343,17 @@ def client_card_page(client_id: str, request: Request):
         WHERE i.client_id = :client_id
 
         ORDER BY i.invoice_date DESC
-    """, {"client_id": client_id})
+    """, {"client_id": client_id}, operation="client_card_invoices")
 
     if df.empty:
-        historical_client = get_historical_client_identity(client_id)
+        historical_client = await get_historical_client_identity(client_id)
 
         if historical_client.empty:
             ui.label(f"Карточка клиента: {client_id}").classes("text-3xl font-bold mb-4")
             ui.label("Нет данных по клиенту")
             return
 
-        history_df = query_optional_df("""
+        history_df = await query_optional_df("""
             SELECT
                 report_generated_date,
                 total_debt,
@@ -355,9 +366,9 @@ def client_card_page(client_id: str, request: Request):
             FROM core.v_client_daily_history
             WHERE client_id = :client_id
             ORDER BY report_generated_date
-        """, {"client_id": client_id})
+        """, {"client_id": client_id}, operation="client_card_historical_history")
 
-        rating_migration = query_optional_df("""
+        rating_migration = await query_optional_df("""
             SELECT
                 period_label,
                 period_days,
@@ -380,9 +391,9 @@ def client_card_page(client_id: str, request: Request):
                 rating_change_label
             FROM core.v_executive_rating_migration_clients
             WHERE client_id = :client_id
-        """, {"client_id": client_id})
+        """, {"client_id": client_id}, operation="client_card_historical_migration")
 
-        paid_invoices = query_optional_df("""
+        paid_invoices = await query_optional_df("""
             SELECT
                 p.client_id,
                 p.client_name,
@@ -427,7 +438,7 @@ def client_card_page(client_id: str, request: Request):
                 p.paid_amount_detected DESC
 
             LIMIT 20
-        """, {"client_id": client_id})
+        """, {"client_id": client_id}, operation="client_card_historical_paid")
 
         client = historical_client.iloc[0]
         client_name = client.get("client_name") or "—"
@@ -503,7 +514,7 @@ def client_card_page(client_id: str, request: Request):
 
     # === Paid / closed invoice events ===
 
-    paid_invoices = query_df("""
+    paid_invoices = await query_df("""
         SELECT
             p.client_id,
             p.client_name,
@@ -548,12 +559,12 @@ def client_card_page(client_id: str, request: Request):
             p.paid_amount_detected DESC
 
         LIMIT 20
-    """, {"client_id": client_id})
+    """, {"client_id": client_id}, operation="client_card_paid_invoices")
 
 
     # === Historical data ===
 
-    history_df = query_df("""
+    history_df = await query_df("""
         SELECT
             report_generated_date,
             total_debt,
@@ -566,9 +577,9 @@ def client_card_page(client_id: str, request: Request):
         FROM core.v_client_daily_history
         WHERE client_id = :client_id
         ORDER BY report_generated_date
-    """, {"client_id": client_id})
+    """, {"client_id": client_id}, operation="client_card_history")
 
-    rating_migration = query_df("""
+    rating_migration = await query_df("""
         SELECT
             period_label,
             period_days,
@@ -591,13 +602,13 @@ def client_card_page(client_id: str, request: Request):
             rating_change_label
         FROM core.v_executive_rating_migration_clients
         WHERE client_id = :client_id
-    """, {"client_id": client_id})
+    """, {"client_id": client_id}, operation="client_card_rating_migration")
 
-    credit_quality = query_df("""
+    credit_quality = await query_df("""
         SELECT *
         FROM core.v_client_credit_quality_rating
         WHERE client_id = :client_id
-    """, {"client_id": client_id})
+    """, {"client_id": client_id}, operation="client_card_credit_quality")
 
     payment_behavior_metrics = get_payment_behavior_metrics(paid_invoices)
 

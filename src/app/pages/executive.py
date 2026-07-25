@@ -4,7 +4,7 @@ import os
 import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
 from src.app.components.kpi_cards import money, percent
@@ -27,6 +27,9 @@ from src.app.components.branch_table import (
     get_worst_branch,
     worst_branch_signal_text,
 )
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build, span
+from src.app.services.settings import get_page_response_timeout
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(PROJECT_ROOT / ".env")
@@ -37,9 +40,23 @@ engine = create_engine(
 )
 
 
-def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn, params=params)
+async def query_df(
+    sql: str,
+    params: dict | None = None,
+    *,
+    operation: str,
+) -> pd.DataFrame:
+    return await read_dataframe(
+        engine,
+        sql,
+        operation=operation,
+        params=params,
+    )
+
+
+def build_chart(operation: str, builder, dataframe: pd.DataFrame):
+    with span("plotly_timing", operation):
+        return builder(dataframe)
 
 
 def rating_text(value) -> str:
@@ -221,52 +238,59 @@ def render_management_signals(
         )
 
 
-@ui.page("/executive")
-def executive_overview_page():
+@ui.page(
+    "/executive",
+    response_timeout=get_page_response_timeout(),
+)
+@page_build("executive", "/executive")
+async def executive_overview_page():
     ui.label("Сводка для руководителя").classes("text-3xl font-bold mb-2")
     ui.label("Общее состояние портфеля дебиторской задолженности").classes("text-gray-500 mb-4")
 
     top_navigation()
 
-    kpi_df = query_df("SELECT * FROM core.v_executive_overview_kpi")
+    kpi_df = await query_df(
+        "SELECT * FROM core.v_executive_overview_kpi",
+        operation="executive_kpi",
+    )
 
-    portfolio_history = query_df("""
+    portfolio_history = await query_df("""
         SELECT *
         FROM core.v_executive_portfolio_daily_history
         ORDER BY report_generated_date
-    """)
+    """, operation="executive_portfolio_history")
 
-    maturity_history = query_df("""
+    maturity_history = await query_df("""
         SELECT *
         FROM core.v_executive_green_debt_maturity_history
         ORDER BY report_generated_date, maturity_bucket
-    """)
+    """, operation="executive_maturity_history")
 
-    debt_age_history = query_df("""
+    debt_age_history = await query_df("""
         SELECT *
         FROM core.v_executive_weighted_debt_age_history
         ORDER BY report_generated_date
-    """)
+    """, operation="executive_debt_age_history")
 
-    payment_term_history = query_df("""
+    payment_term_history = await query_df("""
         SELECT *
         FROM core.v_executive_payment_term_history
         ORDER BY report_generated_date
-    """)
+    """, operation="executive_payment_term_history")
 
-    long_green_history = query_df("""
+    long_green_history = await query_df("""
         SELECT *
         FROM core.v_executive_long_green_exposure
         ORDER BY report_generated_date
-    """)
+    """, operation="executive_long_green_history")
 
-    rating_exposure = query_df("""
+    rating_exposure = await query_df("""
         SELECT *
         FROM core.v_executive_rating_exposure
         ORDER BY stars NULLS LAST
-    """)
+    """, operation="executive_rating_exposure")
 
-    credit_quality_exposure = query_df("""
+    credit_quality_exposure = await query_df("""
         SELECT
             credit_quality_stars,
             COUNT(*) AS client_count,
@@ -275,33 +299,33 @@ def executive_overview_page():
         FROM core.v_client_credit_quality_rating
         GROUP BY credit_quality_stars
         ORDER BY credit_quality_stars NULLS LAST
-    """)
+    """, operation="executive_credit_quality_exposure")
 
-    rating_migration = query_df("""
+    rating_migration = await query_df("""
         SELECT *
         FROM core.v_executive_rating_migration_summary
         ORDER BY sort_order
-    """)
+    """, operation="executive_rating_migration")
 
-    client_risk_bubble = query_df("""
+    client_risk_bubble = await query_df("""
         SELECT *
         FROM core.v_executive_client_risk_bubble
         ORDER BY bubble_size DESC
-    """)
+    """, operation="executive_client_risk_bubble")
     
-    hidden_risk_bubble = query_df("""
+    hidden_risk_bubble = await query_df("""
         SELECT *
         FROM core.v_executive_hidden_risk_bubble
         ORDER BY bubble_size DESC
-    """)
+    """, operation="executive_hidden_risk_bubble")
 
-    branch_health = query_df("""
+    branch_health = await query_df("""
         SELECT *
         FROM core.v_executive_branch_health
         ORDER BY overdue_share_pct DESC, green_90_plus_share_pct DESC
-    """)
+    """, operation="executive_branch_health")
 
-    hidden_risk = query_df("""
+    hidden_risk = await query_df("""
         SELECT *
         FROM core.v_client_operational_summary
         WHERE stars <= 3
@@ -310,32 +334,33 @@ def executive_overview_page():
             shifted_amount DESC,
             overdue_debt DESC,
             total_debt DESC
-    """)
+    """, operation="executive_hidden_risk")
 
-    term_shift_kpi = query_df("""
+    term_shift_kpi = await query_df("""
         SELECT *
         FROM core.v_executive_term_shift_kpi
-    """)
+    """, operation="executive_term_shift_kpi")
 
     if kpi_df.empty:
         ui.label("Нет данных для сводки руководителя.").classes("text-lg text-red-700")
         return
 
-    kpi = kpi_df.iloc[0]
+    with span("pandas_timing", "executive_dataframe_prepare"):
+        kpi = kpi_df.iloc[0]
 
-    total_portfolio_debt = float(kpi["total_debt"] or 0)
+        total_portfolio_debt = float(kpi["total_debt"] or 0)
 
-    top20_debt = (
-        client_risk_bubble
-        .nlargest(20, "bubble_size")["bubble_size"]
-        .sum()
-    )
+        top20_debt = (
+            client_risk_bubble
+            .nlargest(20, "bubble_size")["bubble_size"]
+            .sum()
+        )
 
-    top20_share_pct = (
-        top20_debt / total_portfolio_debt * 100
-        if total_portfolio_debt > 0
-        else 0
-    )
+        top20_share_pct = (
+            top20_debt / total_portfolio_debt * 100
+            if total_portfolio_debt > 0
+            else 0
+        )
 
     with ui.row().classes("gap-4 mb-6"):
         compact_kpi(
@@ -384,19 +409,31 @@ def executive_overview_page():
     chart_card(
         "Общая динамика задолженности",
         "Общий долг и просроченная задолженность по дням.",
-        build_portfolio_debt_history_chart(portfolio_history),
+        build_chart(
+            "executive_portfolio_history_chart",
+            build_portfolio_debt_history_chart,
+            portfolio_history,
+        ),
     )
 
     chart_card(
         "Структура задолженности по дням",
         "Не просрочено, к оплате в ближайшие дни, к оплате сегодня и просрочено.",
-        build_portfolio_debt_structure_chart(portfolio_history),
+        build_chart(
+            "executive_portfolio_structure_chart",
+            build_portfolio_debt_structure_chart,
+            portfolio_history,
+        ),
     )
 
     chart_card(
         "Надежная задолженность и задолженность, требующая контроля",
         "Надежная задолженность: рейтинг 4–5 звезд, нет просрочки, отсрочка до 45 дней включительно.",
-        build_debt_quality_chart(portfolio_history),
+        build_chart(
+            "executive_debt_quality_chart",
+            build_debt_quality_chart,
+            portfolio_history,
+        ),
     )
 
     section_title(
@@ -407,25 +444,41 @@ def executive_overview_page():
     chart_card(
         "Структура непросроченной задолженности по срокам отсрочки",
         "Показывает концентрацию непросроченного долга в коротких и длинных отсрочках.",
-        build_green_debt_maturity_chart(maturity_history),
+        build_chart(
+            "executive_green_maturity_chart",
+            build_green_debt_maturity_chart,
+            maturity_history,
+        ),
     )
 
     chart_card(
         "Средневзвешенный возраст долга",
         "Средний возраст открытой задолженности, взвешенный по сумме долга.",
-        build_weighted_debt_age_chart(debt_age_history),
+        build_chart(
+            "executive_debt_age_chart",
+            build_weighted_debt_age_chart,
+            debt_age_history,
+        ),
     )
 
     chart_card(
         "Средневзвешенная отсрочка по портфелю",
         "Динамика средней отсрочки в днях, взвешенной по сумме задолженности.",
-        build_weighted_payment_term_chart(payment_term_history),
+        build_chart(
+            "executive_payment_term_chart",
+            build_weighted_payment_term_chart,
+            payment_term_history,
+        ),
     )
 
     chart_card(
         "Длинная непросроченная задолженность",
         "История непросроченного долга с отсрочкой 90+ и 120+ дней.",
-        build_long_green_exposure_chart(long_green_history),
+        build_chart(
+            "executive_long_green_chart",
+            build_long_green_exposure_chart,
+            long_green_history,
+        ),
     )
 
     section_title(
@@ -436,7 +489,11 @@ def executive_overview_page():
     chart_card(
         "Экспозиция по кредитному качеству клиентов",
         "Распределение задолженности по Credit Quality Rating с учетом просрочки, длинных отсрочек и переносов сроков.",
-        build_credit_quality_exposure_chart(credit_quality_exposure),
+        build_chart(
+            "executive_credit_quality_chart",
+            build_credit_quality_exposure_chart,
+            credit_quality_exposure,
+        ),
     )
 
     section_title(
@@ -503,7 +560,11 @@ def executive_overview_page():
         chart_card(
             "Миграция рейтингов по периодам",
             "Сравнение рейтингов на начало и конец периода.",
-            build_rating_migration_chart(rating_migration),
+            build_chart(
+                "executive_rating_migration_chart",
+                build_rating_migration_chart,
+                rating_migration,
+            ),
         )
 
     section_title(
@@ -514,7 +575,11 @@ def executive_overview_page():
     chart_card(
         "Рейтинг × отсрочка × сумма долга",
         "X — средневзвешенная отсрочка, Y — рейтинг клиента, размер пузыря — сумма долга, цвет — уровень просрочки.",
-        build_client_risk_bubble_chart(client_risk_bubble),
+        build_chart(
+            "executive_client_risk_chart",
+            build_client_risk_bubble_chart,
+            client_risk_bubble,
+        ),
     )
 
     chart_card(
@@ -523,13 +588,21 @@ def executive_overview_page():
             f"{money(top20_debt)} руб "
             f"({top20_share_pct:.1f}% общей дебиторской задолженности)"
         ),
-    build_top_client_risk_bubble_chart(client_risk_bubble),
+        build_chart(
+            "executive_top_client_risk_chart",
+            build_top_client_risk_bubble_chart,
+            client_risk_bubble,
+        ),
     )
 
     chart_card(
         "Рейтинг × длинная непросроченная задолженность",
         "X — доля 90+ непросроченной задолженности, Y — рейтинг клиента, размер пузыря — сумма долга, цвет — уровень скрытого риска.",
-        build_hidden_risk_bubble_chart(hidden_risk_bubble),
+        build_chart(
+            "executive_hidden_risk_chart",
+            build_hidden_risk_bubble_chart,
+            hidden_risk_bubble,
+        ),
     )
     
     render_management_signals(

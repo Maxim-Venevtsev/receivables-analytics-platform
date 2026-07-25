@@ -5,9 +5,12 @@ from urllib.parse import quote
 import pandas as pd
 from dotenv import load_dotenv
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build
+from src.app.services.settings import get_page_response_timeout
 from src.app.components.kpi_cards import money, percent
 from src.app.components.branch_table import render_branch_table
 
@@ -37,9 +40,8 @@ EXECUTIVE_BRANCH_COLUMNS = [
 ]
 
 
-def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn, params=params)
+async def query_df(sql: str, params: dict | None = None, *, operation: str) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation, params=params)
 
 
 def compact_kpi(title: str, value: str, subtitle: str = ""):
@@ -50,8 +52,9 @@ def compact_kpi(title: str, value: str, subtitle: str = ""):
             ui.label(subtitle).classes("text-sm text-gray-500 h-8 flex items-center justify-center")
 
 
-@ui.page("/executive/branches")
-def executive_branches_page():
+@ui.page("/executive/branches", response_timeout=get_page_response_timeout())
+@page_build("executive_branches", "/executive/branches")
+async def executive_branches_page():
     ui.label("Состояние филиалов").classes("text-3xl font-bold mb-2")
     ui.label(
         "Сравнение филиалов по просрочке, переносам сроков и рейтингу портфеля"
@@ -64,13 +67,13 @@ def executive_branches_page():
         on_click=lambda: ui.navigate.to("/executive"),
     ).props("flat color=primary").classes("mb-4")
 
-    branch_health = query_df("""
+    branch_health = await query_df("""
         SELECT *
         FROM core.v_executive_branch_health
         ORDER BY overdue_share_pct DESC, green_90_plus_share_pct DESC
-    """)
+    """, operation="executive_branches_health")
 
-    long_green_by_branch = query_df("""
+    long_green_by_branch = await query_df("""
         SELECT
             client_group,
             SUM(green_45_plus_debt) AS green_45_plus_debt_calc,
@@ -79,9 +82,9 @@ def executive_branches_page():
             SUM(green_120_plus_debt) AS green_120_plus_debt_calc
         FROM core.v_executive_long_green_clients
         GROUP BY client_group
-    """)
+    """, operation="executive_branches_long_green")
 
-    term_shifts_by_branch = query_df("""
+    term_shifts_by_branch = await query_df("""
         SELECT
             i.client_group,
 
@@ -130,7 +133,7 @@ def executive_branches_page():
            AND i.invoice_date = ts.invoice_date
 
         GROUP BY i.client_group
-    """)
+    """, operation="executive_branches_term_shifts")
 
     if branch_health.empty:
         ui.label("Нет данных по филиалам.").classes("text-green-700 text-lg")

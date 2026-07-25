@@ -6,9 +6,12 @@ import pandas as pd
 from dotenv import load_dotenv
 from fastapi import Request
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build
+from src.app.services.settings import get_page_response_timeout
 from src.app.components.rating_stars import rating_stars_html
 from src.app.components.charts import (
     build_client_debt_history_chart,
@@ -41,9 +44,8 @@ engine = create_engine(
 )
 
 
-def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn, params=params)
+async def query_df(sql: str, params: dict | None = None, *, operation: str) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation, params=params)
 
 
 def money(value) -> str:
@@ -84,12 +86,16 @@ def aging_bucket(row) -> str:
     return "Не просрочено"
 
 
-@ui.page("/branch/{branch_name}")
-def branch_card_page(branch_name: str, request: Request):
+@ui.page(
+    "/branch/{branch_name}",
+    response_timeout=get_page_response_timeout(),
+)
+@page_build("branch_card", "/branch/{branch_name}")
+async def branch_card_page(branch_name: str, request: Request):
     origin = request.query_params.get("from", "/")
     back_target = origin if origin.startswith("/") else "/"
 
-    invoices = query_df("""
+    invoices = await query_df("""
         SELECT
             i.parent_org_id,
             i.client_id,
@@ -152,7 +158,7 @@ def branch_card_page(branch_name: str, request: Request):
 
         WHERE i.client_group = :branch_name
         ORDER BY i.client_name, i.due_date
-    """, {"branch_name": branch_name})
+    """, {"branch_name": branch_name}, operation="branch_card_invoices")
 
     if invoices.empty:
         ui.label(f"Карточка филиала: {branch_name}").classes("text-3xl font-bold mb-2")
@@ -160,7 +166,7 @@ def branch_card_page(branch_name: str, request: Request):
         ui.label("Нет данных по этому филиалу.").classes("text-lg text-red-700")
         return
 
-    paid_invoices = query_df("""
+    paid_invoices = await query_df("""
         SELECT
             p.client_id,
             p.client_name,
@@ -205,9 +211,9 @@ def branch_card_page(branch_name: str, request: Request):
             p.paid_amount_detected DESC
 
         LIMIT 30
-    """, {"branch_name": branch_name})
+    """, {"branch_name": branch_name}, operation="branch_card_paid_invoices")
 
-    history_df = query_df("""
+    history_df = await query_df("""
         SELECT
             report_generated_date,
             total_debt,
@@ -220,15 +226,15 @@ def branch_card_page(branch_name: str, request: Request):
         FROM core.v_branch_daily_history
         WHERE client_group = :branch_name
         ORDER BY report_generated_date
-    """, {"branch_name": branch_name})
+    """, {"branch_name": branch_name}, operation="branch_card_history")
 
-    branch_rating_df = query_df("""
+    branch_rating_df = await query_df("""
         SELECT *
         FROM core.v_branch_rating_dynamics
         WHERE client_group = :branch_name
-    """, {"branch_name": branch_name})
+    """, {"branch_name": branch_name}, operation="branch_card_rating")
 
-    rating_migration = query_df("""
+    rating_migration = await query_df("""
         WITH current_client_debt AS (
             SELECT
                 client_id,
@@ -244,15 +250,15 @@ def branch_card_page(branch_name: str, request: Request):
         LEFT JOIN current_client_debt d
             ON m.client_id = d.client_id
         WHERE m.client_group = :branch_name
-    """, {"branch_name": branch_name})
+    """, {"branch_name": branch_name}, operation="branch_card_rating_migration")
 
-    credit_quality_clients = query_df("""
+    credit_quality_clients = await query_df("""
         SELECT *
         FROM core.v_client_credit_quality_rating
         WHERE client_group = :branch_name
-    """, {"branch_name": branch_name})
+    """, {"branch_name": branch_name}, operation="branch_card_credit_quality_clients")
 
-    credit_quality_exposure = query_df("""
+    credit_quality_exposure = await query_df("""
         SELECT
             credit_quality_stars,
             COUNT(*) AS client_count,
@@ -262,9 +268,9 @@ def branch_card_page(branch_name: str, request: Request):
         WHERE client_group = :branch_name
         GROUP BY credit_quality_stars
         ORDER BY credit_quality_stars NULLS LAST
-    """, {"branch_name": branch_name})
+    """, {"branch_name": branch_name}, operation="branch_card_credit_quality_exposure")
 
-    clients = query_df("""
+    clients = await query_df("""
         SELECT *
         FROM core.v_client_operational_summary
         WHERE client_group = :branch_name
@@ -276,7 +282,7 @@ def branch_card_page(branch_name: str, request: Request):
             payment_attention_amount DESC,
             shifted_amount DESC,
             total_debt DESC
-    """, {"branch_name": branch_name})
+    """, {"branch_name": branch_name}, operation="branch_card_clients")
 
     total_debt = invoices["invoice_amount"].sum()
     due_today = invoices["due_today_amount"].sum()

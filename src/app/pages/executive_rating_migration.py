@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 import os
 
@@ -5,9 +6,12 @@ import pandas as pd
 from dotenv import load_dotenv
 from fastapi import Request
 from nicegui import ui
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
+from src.app.services.database import read_dataframe
+from src.app.services.performance import page_build
+from src.app.services.settings import get_page_response_timeout
 from src.app.components.kpi_cards import money
 from src.app.components.rating_stars import rating_stars_html
 
@@ -21,9 +25,8 @@ engine = create_engine(
 )
 
 
-def query_df(sql: str, params: dict | None = None) -> pd.DataFrame:
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn, params=params)
+async def query_df(sql: str, params: dict | None = None, *, operation: str) -> pd.DataFrame:
+    return await read_dataframe(engine, sql, operation=operation, params=params)
 
 
 def compact_kpi(title: str, value: str, subtitle: str = "", color_class: str = "text-gray-900"):
@@ -117,8 +120,12 @@ def credit_quality_migration_cte() -> str:
     """
 
 
-@ui.page("/executive/rating-migration")
-def executive_rating_migration_page(request: Request):
+@ui.page(
+    "/executive/rating-migration",
+    response_timeout=get_page_response_timeout(),
+)
+@page_build("executive_rating_migration", "/executive/rating-migration")
+async def executive_rating_migration_page(request: Request):
     ui.label("Миграция рейтингов").classes("text-3xl font-bold mb-2")
     ui.label("Клиенты, у которых рейтинг изменился между началом и концом выбранного периода.").classes(
         "text-gray-500 mb-4"
@@ -136,8 +143,8 @@ def executive_rating_migration_page(request: Request):
 
     content = ui.column().classes("w-full")
 
-    def load_summary(period_label: str) -> pd.DataFrame:
-        return query_df(
+    async def load_summary(period_label: str) -> pd.DataFrame:
+        return await query_df(
             credit_quality_migration_cte()
             + """
             SELECT
@@ -162,10 +169,11 @@ def executive_rating_migration_page(request: Request):
                 "period_label": period_label,
                 "period_days": period_days_for_label(period_label),
             },
+            operation="executive_rating_migration_summary",
         )
 
-    def load_clients(period_label: str) -> pd.DataFrame:
-        return query_df(
+    async def load_clients(period_label: str) -> pd.DataFrame:
+        return await query_df(
             credit_quality_migration_cte()
             + """
             SELECT *
@@ -177,6 +185,7 @@ def executive_rating_migration_page(request: Request):
                 "period_label": period_label,
                 "period_days": period_days_for_label(period_label),
             },
+            operation="executive_rating_migration_clients",
         )
 
     def prepare_rows(df: pd.DataFrame):
@@ -202,11 +211,11 @@ def executive_rating_migration_page(request: Request):
 
         return dff.to_dict("records")
 
-    def render():
+    async def render_content():
         period_label = selected_period.value
 
-        summary = load_summary(period_label)
-        clients = load_clients(period_label)
+        summary = await load_summary(period_label)
+        clients = await load_clients(period_label)
 
         content.clear()
 
@@ -330,5 +339,14 @@ def executive_rating_migration_page(request: Request):
                 ),
             )
 
-    selected_period.on_value_change(lambda _: render())
-    render()
+    render_lock = asyncio.Lock()
+
+    async def render() -> None:
+        async with render_lock:
+            await render_content()
+
+    async def rerender(_event) -> None:
+        await render()
+
+    selected_period.on_value_change(rerender)
+    await render()
