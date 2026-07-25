@@ -9,6 +9,10 @@ from sqlalchemy import create_engine
 
 from src.app.components.navigation import top_navigation
 from src.app.services.database import read_dataframe
+from src.app.services.metrics import (
+    overdue_portfolio_subtitle,
+    portfolio_denominator,
+)
 from src.app.services.performance import page_build
 from src.app.services.settings import get_page_response_timeout
 from src.app.components.clients_table import render_clients_table
@@ -136,8 +140,6 @@ async def overdue_page():
             SELECT
                 client_group,
 
-                SUM(total_debt) AS total_debt,
-
                 SUM(
                     CASE
                         WHEN overdue_debt > 0
@@ -189,13 +191,28 @@ async def overdue_page():
             FROM core.v_client_operational_summary
 
             GROUP BY client_group
+        ),
+
+        branch_portfolio AS (
+            SELECT
+                client_group,
+                SUM(invoice_amount) AS total_debt
+            FROM core.v_invoice_detail
+            GROUP BY client_group
+        ),
+
+        portfolio AS (
+            SELECT
+                SUM(invoice_amount) AS total_debt
+            FROM core.v_invoice_detail
         )
 
         SELECT
             b.client_group,
             bh.weighted_rating,
 
-            b.total_debt,
+            p.total_debt,
+            portfolio.total_debt AS portfolio_total_debt,
             b.overdue_debt,
             b.debt_45_plus,
             b.debt_60_plus,
@@ -203,9 +220,14 @@ async def overdue_page():
             b.debt_120_plus,
             b.max_days_overdue,
 
-            ROUND(b.overdue_debt / NULLIF(b.total_debt, 0) * 100, 2) AS overdue_share_pct
+            ROUND(b.overdue_debt / NULLIF(p.total_debt, 0) * 100, 2) AS overdue_share_pct
 
         FROM branch_debt b
+
+        JOIN branch_portfolio p
+            ON b.client_group = p.client_group
+
+        CROSS JOIN portfolio
 
         LEFT JOIN core.v_executive_branch_health bh
             ON b.client_group = bh.client_group
@@ -217,11 +239,12 @@ async def overdue_page():
             b.debt_90_plus DESC,
             b.debt_120_plus DESC,
             b.max_days_overdue DESC,
-            b.total_debt DESC
+            p.total_debt DESC
     """, operation="overdue_branches")
 
     numeric_cols = [
         "total_debt",
+        "portfolio_total_debt",
         "overdue_debt",
         "overdue_share_pct",
         "debt_45_plus",
@@ -285,7 +308,10 @@ async def overdue_page():
             branch_df = branch_df[branch_df["client_group"].isin(selected_branches)]
             client_df = client_df[client_df["client_group"].isin(selected_branches)]
 
-        total_debt = float(branch_df["total_debt"].sum())
+        total_debt = portfolio_denominator(
+            branch_df,
+            branch_filter_active=bool(selected_branches),
+        )
         overdue_debt = float(branch_df["overdue_debt"].sum())
         debt_90_plus = float(branch_df["debt_90_plus"].sum())
         debt_120_plus = float(branch_df["debt_120_plus"].sum())
@@ -314,7 +340,10 @@ async def overdue_page():
         overdue_label, overdue_subtitle = compact_kpi(
             "Просрочено",
             money(initial_kpi["overdue_debt"]),
-            f"{percent(initial_kpi['overdue_share_pct'])} портфеля",
+            overdue_portfolio_subtitle(
+                initial_kpi["overdue_debt"],
+                initial_kpi["total_debt"],
+            ),
             "text-red-700",
         )
 
@@ -372,7 +401,10 @@ async def overdue_page():
         metrics = get_kpi_metrics()
 
         overdue_label.text = money(metrics["overdue_debt"])
-        overdue_subtitle.text = f"{percent(metrics['overdue_share_pct'])} портфеля"
+        overdue_subtitle.text = overdue_portfolio_subtitle(
+            metrics["overdue_debt"],
+            metrics["total_debt"],
+        )
 
         overdue_clients_label.text = str(metrics["overdue_clients"])
         overdue_clients_subtitle.text = ""

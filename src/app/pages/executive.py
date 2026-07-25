@@ -28,6 +28,10 @@ from src.app.components.branch_table import (
     worst_branch_signal_text,
 )
 from src.app.services.database import read_dataframe
+from src.app.services.metrics import (
+    overdue_portfolio_subtitle,
+    overdue_share_percent,
+)
 from src.app.services.performance import page_build, span
 from src.app.services.settings import get_page_response_timeout
 
@@ -250,7 +254,27 @@ async def executive_overview_page():
     top_navigation()
 
     kpi_df = await query_df(
-        "SELECT * FROM core.v_executive_overview_kpi",
+        """
+        SELECT
+            e.latest_snapshot_date,
+            d.total_debt,
+            d.overdue_debt,
+            CASE
+                WHEN d.total_debt > 0
+                THEN d.overdue_debt / d.total_debt * 100
+                ELSE 0
+            END AS overdue_share_pct,
+            e.due_today,
+            e.due_soon_only,
+            e.green_90_plus_debt,
+            e.green_90_plus_share_of_portfolio_pct,
+            e.green_120_plus_debt,
+            e.green_120_plus_share_of_portfolio_pct,
+            e.weighted_portfolio_rating,
+            e.rating_method
+        FROM core.v_executive_overview_kpi e
+        CROSS JOIN core.v_dashboard_operational_kpi d
+        """,
         operation="executive_kpi",
     )
 
@@ -346,7 +370,11 @@ async def executive_overview_page():
         return
 
     with span("pandas_timing", "executive_dataframe_prepare"):
-        kpi = kpi_df.iloc[0]
+        kpi = kpi_df.iloc[0].copy()
+        kpi["overdue_share_pct"] = overdue_share_percent(
+            float(kpi["overdue_debt"] or 0),
+            float(kpi["total_debt"] or 0),
+        )
 
         total_portfolio_debt = float(kpi["total_debt"] or 0)
 
@@ -371,7 +399,10 @@ async def executive_overview_page():
         compact_kpi(
             "Просрочено",
             money(kpi["overdue_debt"]),
-            f"{percent(kpi['overdue_share_pct'])} портфеля",
+            overdue_portfolio_subtitle(
+                float(kpi["overdue_debt"] or 0),
+                float(kpi["total_debt"] or 0),
+            ),
             "text-red-600",
         )
         compact_kpi(
