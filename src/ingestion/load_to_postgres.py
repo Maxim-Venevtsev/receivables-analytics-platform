@@ -21,11 +21,8 @@ def get_engine():
     return create_engine(url)
 
 
-def load_receivables_snapshot(df: pd.DataFrame, metadata: dict, source_path: Path):
-    engine = get_engine()
-
-    with engine.begin() as conn:
-        conn.execute(
+def _create_snapshot_load(conn, df: pd.DataFrame, metadata: dict, source_path: Path):
+    conn.execute(
             text("""
                 DELETE FROM core.receivables_snapshot_fact
                 WHERE source_file_name = :source_file_name
@@ -33,7 +30,7 @@ def load_receivables_snapshot(df: pd.DataFrame, metadata: dict, source_path: Pat
             {"source_file_name": source_path.name}
         )
 
-        conn.execute(
+    conn.execute(
             text("""
                 DELETE FROM raw.snapshot_loads
                 WHERE source_file_name = :source_file_name
@@ -41,7 +38,7 @@ def load_receivables_snapshot(df: pd.DataFrame, metadata: dict, source_path: Pat
             {"source_file_name": source_path.name}
         )
 
-        result = conn.execute(
+    result = conn.execute(
             text("""
                 INSERT INTO raw.snapshot_loads (
                     source_file_name,
@@ -78,9 +75,10 @@ def load_receivables_snapshot(df: pd.DataFrame, metadata: dict, source_path: Pat
                 "row_count_loaded": len(df),
             }
         )
+    return result.scalar()
 
-        load_id = result.scalar()
 
+def _append_snapshot_facts(conn, df: pd.DataFrame, load_id: int) -> None:
     df = df.copy()
     df["load_id"] = load_id
 
@@ -117,9 +115,33 @@ def load_receivables_snapshot(df: pd.DataFrame, metadata: dict, source_path: Pat
 
     df[ordered_columns].to_sql(
         name="receivables_snapshot_fact",
-        con=engine,
+        con=conn,
         schema="core",
         if_exists="append",
         index=False,
         method="multi"
     )
+
+
+def load_receivables_snapshot_in_transaction(
+    conn,
+    df: pd.DataFrame,
+    metadata: dict,
+    source_path: Path,
+) -> int:
+    """Load one snapshot using a caller-owned transaction."""
+    load_id = _create_snapshot_load(conn, df, metadata, source_path)
+    _append_snapshot_facts(conn, df, load_id)
+    return load_id
+
+
+def load_receivables_snapshot(df: pd.DataFrame, metadata: dict, source_path: Path):
+    engine = get_engine()
+
+    with engine.begin() as conn:
+        load_receivables_snapshot_in_transaction(
+            conn,
+            df,
+            metadata,
+            source_path,
+        )
