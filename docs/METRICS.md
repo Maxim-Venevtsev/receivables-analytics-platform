@@ -161,6 +161,37 @@ Legacy status labels `UPGRADED` and `DOWNGRADED` may still appear in older base-
 improved_clients - worsened_clients
 ```
 
+## Historical reconstruction and metric interpretation
+
+Historical Backfill reconstructs analytical state for an explicit snapshot
+date. It does not introduce alternative KPI definitions.
+
+For a reconstructed date:
+
+- debt metrics use current outstanding balances recorded in that fact snapshot;
+- overdue flags and maturity measures use the dates and balances visible in
+  that snapshot;
+- base rating uses only fact dates up to the target date and the configured
+  rolling history window;
+- Credit Quality uses the same-date exposure and the reconstructed base rating;
+- term-shift severity uses only invoice events visible on or before the target
+  date;
+- later snapshots must not influence earlier rating, Credit Quality or
+  term-shift results.
+
+The affected history suffix is regenerated chronologically so migration and
+period-comparison metrics remain internally consistent after older facts are
+inserted. Production current-state views and current KPI formulas are not
+changed by reconstruction.
+
+Historical availability remains bounded by retained source snapshots. A missing
+source date is not interpolated, and confidence or migration metrics must be
+interpreted according to the number and spacing of available snapshot dates.
+
+Database metadata can confirm report date, filename, load status and row counts
+for facts loaded previously. It cannot prove cryptographic identity with an
+archived source file because `raw.snapshot_loads` does not store SHA256.
+
 
 ## Payment Attention metrics
 

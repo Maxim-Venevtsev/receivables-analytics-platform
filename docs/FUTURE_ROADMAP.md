@@ -344,6 +344,42 @@ Implemented:
 
 ---
 
+## 1.13 Historical Backfill Framework
+
+Status: **COMPLETED, HARDENED AND POSTGRESQL-VALIDATED**
+
+Implemented:
+
+- isolated maintenance entry point outside scheduled ingestion;
+- complete approved-batch validation and dry-run mode;
+- audited source SHA256 validation and metadata-qualified database matching;
+- chronological fact and history reconstruction in one transaction;
+- temporary isolated maintenance staging;
+- affected rating-history suffix rebuild;
+- affected Credit Quality-history suffix rebuild;
+- preservation of later facts and production current-snapshot views;
+- explicit rejection of future-history and future term-shift leakage;
+- rollback verification through an independent PostgreSQL connection;
+- exact PostgreSQL parity with canonical latest-snapshot rating and Credit
+  Quality views;
+- regression and full-suite coverage;
+- no persistent snapshot-context function or schema migration.
+
+The Historical Backfill Framework is complete and is no longer future
+implementation work.
+
+Possible future enhancements, if broader maintenance needs emerge:
+
+- a generalized analytical maintenance toolkit;
+- additional reusable maintenance verification utilities;
+- operator-oriented historical replay planning and reporting;
+- support for separately approved report families without weakening validation.
+
+These are extensions of the completed framework, not prerequisites for its
+current controlled use.
+
+---
+
 # 2. Next active technical phase
 
 ## 2.0 Performance Engineering

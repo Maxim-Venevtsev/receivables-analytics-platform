@@ -37,6 +37,8 @@ The system now supports:
 - dedicated read-only, chrooted SFTP-only access with no shell or write permission;
 - SHA256 content identity, atomic transfer/handoff and manifest recovery;
 - double-click manual Local Sync and dry-run launchers;
+- isolated Historical Backfill Framework for atomic reconstruction of approved
+  historical fact, rating and Credit Quality snapshots;
 - validated matching latest snapshot dates and principal metrics between production and local dashboards.
 
 Project timeline note:
@@ -219,6 +221,58 @@ Implemented:
 ---
 
 ## Recently completed major phases
+
+## Historical Backfill Framework
+
+Status: **COMPLETED, HARDENED AND POSTGRESQL-VALIDATED**
+
+The project now includes an isolated maintenance framework for reconstructing
+approved historical snapshot batches without changing scheduled ingestion or
+production analytical views.
+
+Implemented:
+
+- complete-batch preflight and deterministic chronological processing;
+- audited source-file SHA256 checks before database work;
+- metadata-qualified matching for snapshots already present in the database;
+- dry-run assessment with no write transaction;
+- one atomic PostgreSQL transaction for fact loading and history reconstruction;
+- isolated maintenance SQL for explicit snapshot dates;
+- verified replacement of the affected history suffix only after complete staging;
+- base client rating history reconstruction;
+- Credit Quality history reconstruction, including historical term-shift isolation;
+- idempotent no-op handling when available metadata and structural history match;
+- explicit rejection of mixed, conflicting, incomplete and future-history states;
+- rollback on fact, rating, Credit Quality or verification failure;
+- preservation of normal current-snapshot production views;
+- no persistent snapshot-context function, schema migration or maintenance object.
+
+Validation:
+
+- focused regression coverage for batch validation, transaction boundaries,
+  structural completeness and failure handling;
+- exact PostgreSQL parity between maintenance output and the canonical latest
+  base-rating and Credit Quality production views;
+- future-snapshot and future term-shift leakage tests;
+- rollback verification through a new independent PostgreSQL connection;
+- full automated test-suite validation.
+
+Evidence boundary:
+
+- approved source files are cryptographically checked before maintenance starts;
+- existing database facts can be matched only by report date, source filename,
+  loaded status, metadata row count and fact row count;
+- `raw.snapshot_loads` does not store SHA256, so cryptographic identity of
+  already-loaded database rows cannot be claimed.
+
+Architecture boundary:
+
+- normal scheduled ingestion remains unchanged;
+- production analytical views remain unchanged;
+- the framework is an explicitly invoked maintenance path, not an alternative
+  scheduler or ingestion pipeline.
+
+---
 
 ## Production Foundation v1
 

@@ -888,6 +888,201 @@ These files are operational artifacts, may contain source metadata and must rema
 
 ---
 
+# Historical Backfill maintenance
+
+The Historical Backfill Framework is an exceptional maintenance workflow for
+approved historical report batches. It is not part of the scheduler and must
+not be substituted for normal daily ingestion.
+
+## Required safeguards
+
+Before any write-mode run:
+
+1. Confirm the report batch and approved checksums through the framework's
+   dry-run output.
+2. Take a PostgreSQL backup of the target database.
+3. Verify that the backup completed successfully and that the restore procedure
+   is understood.
+4. Pause the ingestion scheduler and confirm that no ingestion process is
+   active.
+5. Confirm the target database and environment explicitly.
+6. Preserve the original source files unchanged.
+7. Retain the dry-run and final verification output with the maintenance record.
+
+Do not run historical maintenance concurrently with Mail Gateway handoff,
+scheduled ingestion, Local Sync ingestion or another backfill session.
+
+## Dry-run workflow
+
+Run preflight first:
+
+```bash
+python -m src.ingestion.historical_backfill \
+  --source-dir "<approved-report-directory>" \
+  --dry-run
+```
+
+Dry-run parses and validates the complete batch, verifies audited source
+checksums, inspects database metadata and checks structural invariants. It does
+not open a write transaction.
+
+Stop if dry-run reports:
+
+- a missing or unapproved file;
+- checksum, parser, date or row-count mismatch;
+- a validation error outside an explicitly approved exception;
+- mixed or conflicting database state;
+- incomplete history without a deliberate rebuild request;
+- history later than the latest fact date;
+- a current-snapshot view that does not resolve to the latest fact date;
+- a persistent maintenance object.
+
+## Controlled execution
+
+After backup, scheduler pause and successful dry-run:
+
+```bash
+python -m src.ingestion.historical_backfill \
+  --source-dir "<approved-report-directory>"
+```
+
+If all approved facts already match available database metadata but history
+requires deliberate reconstruction:
+
+```bash
+python -m src.ingestion.historical_backfill \
+  --source-dir "<approved-report-directory>" \
+  --rebuild-history
+```
+
+The framework loads and reconstructs the batch in one transaction. It processes
+facts chronologically, stages base rating and Credit Quality results for the
+affected suffix, verifies coverage, and replaces history only after staging is
+complete.
+
+## Verification queries
+
+Replace the example start date with the approved batch boundary.
+
+Fact coverage:
+
+```sql
+SELECT
+    report_generated_date,
+    COUNT(*) AS fact_rows,
+    COUNT(DISTINCT load_id) AS loads,
+    COUNT(DISTINCT source_file_name) AS source_files
+FROM core.receivables_snapshot_fact
+WHERE report_generated_date >= DATE 'YYYY-MM-DD'
+GROUP BY report_generated_date
+ORDER BY report_generated_date;
+```
+
+Fact client/date pairs missing base rating history:
+
+```sql
+SELECT DISTINCT f.report_generated_date, f.client_id
+FROM core.receivables_snapshot_fact f
+LEFT JOIN core.client_rating_history h
+  ON h.snapshot_date = f.report_generated_date
+ AND h.client_id = f.client_id
+WHERE f.report_generated_date >= DATE 'YYYY-MM-DD'
+  AND h.client_id IS NULL
+ORDER BY f.report_generated_date, f.client_id;
+```
+
+Rated fact client/date pairs missing Credit Quality history:
+
+```sql
+SELECT DISTINCT f.report_generated_date, f.client_id
+FROM core.receivables_snapshot_fact f
+JOIN core.client_rating_history r
+  ON r.snapshot_date = f.report_generated_date
+ AND r.client_id = f.client_id
+LEFT JOIN core.client_credit_quality_history cq
+  ON cq.snapshot_date = f.report_generated_date
+ AND cq.client_id = f.client_id
+WHERE f.report_generated_date >= DATE 'YYYY-MM-DD'
+  AND cq.client_id IS NULL
+ORDER BY f.report_generated_date, f.client_id;
+```
+
+Duplicate client/date history rows:
+
+```sql
+SELECT 'rating' AS history_type, snapshot_date, client_id, COUNT(*) AS rows
+FROM core.client_rating_history
+GROUP BY snapshot_date, client_id
+HAVING COUNT(*) > 1
+UNION ALL
+SELECT 'credit_quality', snapshot_date, client_id, COUNT(*)
+FROM core.client_credit_quality_history
+GROUP BY snapshot_date, client_id
+HAVING COUNT(*) > 1;
+```
+
+Credit Quality rows without same-date base rating:
+
+```sql
+SELECT cq.snapshot_date, cq.client_id
+FROM core.client_credit_quality_history cq
+LEFT JOIN core.client_rating_history r
+  ON r.snapshot_date = cq.snapshot_date
+ AND r.client_id = cq.client_id
+WHERE r.client_id IS NULL;
+```
+
+Latest-fact and production-view resolution:
+
+```sql
+SELECT
+    (SELECT MAX(report_generated_date)
+     FROM core.receivables_snapshot_fact) AS latest_fact_date,
+    (SELECT MAX(report_generated_date)
+     FROM core.v_receivables_current_snapshot) AS current_view_date;
+```
+
+History later than the latest fact:
+
+```sql
+WITH latest AS (
+    SELECT MAX(report_generated_date) AS snapshot_date
+    FROM core.receivables_snapshot_fact
+)
+SELECT 'rating' AS history_type, COUNT(*) AS rows,
+       MIN(h.snapshot_date) AS earliest, MAX(h.snapshot_date) AS latest
+FROM core.client_rating_history h, latest
+WHERE h.snapshot_date > latest.snapshot_date
+HAVING COUNT(*) > 0
+UNION ALL
+SELECT 'credit_quality', COUNT(*), MIN(h.snapshot_date), MAX(h.snapshot_date)
+FROM core.client_credit_quality_history h, latest
+WHERE h.snapshot_date > latest.snapshot_date
+HAVING COUNT(*) > 0;
+```
+
+All discrepancy queries must return no rows, and the latest fact and current
+view dates must match before the scheduler is resumed.
+
+## Rollback and recovery
+
+Parser, load, maintenance SQL or verification failure aborts the shared
+transaction. PostgreSQL restores snapshot metadata, facts and both history
+tables to their pre-run state.
+
+If verification fails after a successful commit:
+
+1. Keep the scheduler paused.
+2. Preserve command output and database logs.
+3. Do not make ad hoc table edits.
+4. Restore the pre-maintenance backup through the approved restore procedure.
+5. Re-run the verification queries before resuming normal ingestion.
+
+The framework does not modify production views and does not install persistent
+snapshot-context functions or migrations.
+
+---
+
 # Demo dataset
 
 Demo dataset files:

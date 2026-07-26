@@ -83,6 +83,72 @@ This supports:
 
 ---
 
+## Isolated historical reconstruction
+
+Historical maintenance is intentionally separate from normal scheduled
+ingestion. The Historical Backfill Framework reuses the production parser,
+validation rules and fact-loading logic, but owns its transaction and rebuilds
+history for explicit snapshot dates.
+
+The reconstruction sequence is:
+
+1. Validate that the complete approved batch is present.
+2. Verify each source filename, report date, row count and audited SHA256.
+3. Run a read-only dry-run against the target database.
+4. Classify the database state using available load metadata and fact counts.
+5. Load missing facts in chronological report-date order inside one transaction.
+6. Recalculate base rating and Credit Quality into temporary staging tables for
+   every fact date in the affected suffix.
+7. Verify date coverage, unique client/date rows and same-date rating/Credit
+   Quality relationships.
+8. Replace the affected history suffix only after all staged dates pass.
+9. Revalidate the latest fact date, current-snapshot view and absence of future
+   history before commit.
+
+Any failure rolls back the full batch. A single file cannot leave committed
+snapshot metadata, facts or partially reconstructed history.
+
+### History regeneration
+
+Base rating history is reconstructed chronologically from fact snapshots up to
+each explicit target date. This preserves rolling-window confidence, overdue
+occurrence and rating-rule behavior without consulting later facts.
+
+Credit Quality history is then reconstructed for the same date using the staged
+base rating, same-date exposure, configuration tables and term-shift events
+visible on or before that date. Later snapshots and later due-date changes do
+not influence an earlier reconstructed result.
+
+The framework rebuilds the complete affected history suffix rather than
+updating isolated history rows. Later fact snapshots are preserved and their
+history is regenerated consistently.
+
+### Metadata-qualified matching limitation
+
+Approved source files are checked against their audited SHA256 before database
+assessment. Existing loaded snapshots are matched using:
+
+- report date;
+- source filename;
+- loaded status;
+- metadata row count;
+- fact row count.
+
+`raw.snapshot_loads` intentionally does not store SHA256. Therefore the system
+cannot prove cryptographic identity between an approved source file and facts
+that were already loaded previously. CLI output describes this state as facts
+matching available database metadata, not as an exact cryptographic match.
+
+### Production isolation
+
+- scheduled ingestion behavior is unchanged;
+- current-snapshot and analytical production views are unchanged;
+- no session-based snapshot context is installed;
+- no snapshot-context function or schema migration is required;
+- maintenance staging objects are temporary and transaction-scoped.
+
+---
+
 ## Core schema
 
 Main analytical objects are stored in the `core` schema.

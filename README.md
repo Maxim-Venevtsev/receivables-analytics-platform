@@ -93,6 +93,7 @@ flowchart TD
 - Python parsing and normalization
 - Validation and transformation layer
 - Snapshot-based storage
+- isolated, transaction-safe historical reconstruction with dry-run validation
 
 ## Storage
 - PostgreSQL database
