@@ -4,6 +4,7 @@ from urllib.parse import quote
 
 import pandas as pd
 from dotenv import load_dotenv
+from fastapi.responses import PlainTextResponse
 from nicegui import app, ui
 from sqlalchemy import create_engine
 
@@ -34,6 +35,11 @@ from src.app.services.performance import (
     page_build,
     span,
 )
+
+
+@app.get("/health", response_class=PlainTextResponse, include_in_schema=False)
+async def health() -> str:
+    return "OK"
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
